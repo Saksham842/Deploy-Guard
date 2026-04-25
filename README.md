@@ -1,190 +1,133 @@
 # 🛡️ DeployGuard
 
-> **GitHub App that baselines your app's performance on every deploy and blocks PRs that regress bundle size, query speed, or API latency — with an NLP layer that reads commit messages to explain the probable cause, not just the number.**
+> **DeployGuard is a full-stack GitHub App that baselines your application's performance on every deploy. It blocks Pull Requests that regress bundle size, query speed, or API latency—and uses an NLP Causation Engine to explain exactly *why* the regression happened based on commit messages and package diffs.**
 
 [![Node.js](https://img.shields.io/badge/Node.js-20-green)](https://nodejs.org)
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://reactjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue)](https://postgresql.org)
+[![Vercel](https://img.shields.io/badge/Deployed-Vercel-black)](https://vercel.com)
+[![Railway](https://img.shields.io/badge/Backend-Railway-black)](https://railway.app)
 
 ---
 
-## What it does
+##  Key Features
 
-1. **Installs as a GitHub App** — subscribes to `pull_request` events
-2. **Measures** bundle size, query count, and API latency per PR
-3. **Compares** against a stored baseline for the target branch
-4. **Posts a check run** (pass/fail) and a PR comment with a full breakdown
-5. **Explains why** using an NLP classifier trained on 200 commit messages
+1. **GitHub App Integration** — Installs seamlessly and subscribes to `pull_request` events to run automated audits.
+2. **Performance Baselines** — Automatically measures bundle size, query counts, and API latency. Updates the permanent baseline *only* when a PR successfully merges into `main`.
+3. **Automated Checks & Comments** — Posts a native GitHub Check Run (pass/fail) and injects a detailed PR comment with a breakdown of performance deltas.
+4. **NLP Root Cause Analysis** — Uses a Python FastAPI microservice with a custom scikit-learn NLP model trained on 200+ developer commit messages to probabilistically identify the *cause* of the regression.
+5. **Modern Dashboard** — A sleek, dark-mode React (Vite) dashboard built with custom glassmorphism components to view real-time repository stats.
 
 ---
 
-## Architecture
+##  Architecture & Data Flow
 
+DeployGuard is designed as a distributed, event-driven microservices architecture.
+
+```text
+GitHub PR Event → Express.js Webhook → PostgreSQL (Prisma/pg)
+                                     ↓
+                         ┌───────────────────────┐
+                         │  analyseBundle()       │ ← CI Artifact Parsing
+                         │  diffPackageJson()     │ ← GitHub API REST Fetch
+                         │  classifyCommits()     │ ← Python FastAPI NLP
+                         └───────────────────────┘
+                                     ↓
+                         Save Metrics to PostgreSQL
+                                     ↓
+                         Update GitHub Check Run
+                         Post Automated PR Comment
 ```
-GitHub PR → Webhook → Node.js server → Bull queue
-                                    ↓
-                              Worker picks up job
-                                    ↓
-                        ┌───────────────────────┐
-                        │  analyseBundle()       │ ← CI artifact
-                        │  diffPackageJson()     │ ← GitHub API
-                        │  classifyCommits()     │ ← Python NLP
-                        └───────────────────────┘
-                                    ↓
-                        Save to PostgreSQL
-                                    ↓
-                        Update GitHub check run
-                        Post PR comment
-```
 
 ---
 
-## Quick Start (Local Dev)
+##  Deployment Strategy
+
+The application is deployed across three distinct cloud providers for optimal performance and cost-efficiency:
+
+- **Frontend (Vercel):** React + Vite SPA, utilizing Vercel's Edge Network for instant load times. Protected by OAuth GitHub login.
+- **Backend (Railway):** Node.js Express server running the core webhook handlers, Octokit integrations, and automatic PostgreSQL schema migrations.
+- **NLP Engine (Render):** Python FastAPI service running the `scikit-learn` LogisticRegression model to analyze package diffs and commit messages.
+
+---
+
+##  Tech Stack Deep Dive
+
+### Frontend
+- **React 18 + Vite:** Lightning-fast HMR and optimized production builds.
+- **Vanilla CSS + CSS Variables:** Fully custom design system, zero generic UI libraries. Implements modern UI trends (glassmorphism, micro-animations, vibrant gradients).
+- **React Router:** Protected routing with GitHub OAuth integration.
+
+### Backend
+- **Node.js + Express:** Robust REST API and Webhook receiver.
+- **@octokit/app & @octokit/rest:** Complete GitHub App integration, handling JWT generation, installation access tokens, and check-run management.
+- **PostgreSQL:** Relational database for storing repositories, users, performance baselines, and individual check runs.
+
+### Data Science / NLP
+- **Python + FastAPI:** High-performance API for the causation engine.
+- **scikit-learn:** TF-IDF Vectorization and LogisticRegression. Chosen deliberately over LLMs for **predictability, speed, and 100% deterministic explainability** in a CI/CD environment.
+
+---
+
+##  Quick Start (Local Development)
 
 ### Prerequisites
-- Node.js 20+, Python 3.11+, PostgreSQL, Redis
-- A GitHub App (see setup below)
-- [ngrok](https://ngrok.com) for local webhook testing
+- Node.js 20+, Python 3.11+, PostgreSQL
+- A configured GitHub App
+- [ngrok](https://ngrok.com) for localhost webhook routing
 
-### 1. Clone & install
+### 1. Installation
 
 ```bash
-git clone https://github.com/yourname/deployguard.git
-cd deployguard
+git clone https://github.com/Saksham842/Deploy-Guard.git
+cd Deploy-Guard
 
-# Root dependencies
-npm install
-
-# Server dependencies
+# Install Server dependencies
 cd apps/server && npm install
 
-# Web dependencies
+# Install Web dependencies
 cd ../web && npm install
 
-# Python NLP
+# Train & Start Python NLP
 cd ../nlp
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
-python train.py   # trains the model — must run first!
+python train.py   # Must run first to build model.pkl
+uvicorn main:app --reload --port 8000
 ```
 
-### 2. Set up the database
+### 2. Environment Variables
+Create `.env` files in both `apps/server` and `apps/web` referencing the `.env.example`.
 
-```bash
-psql $DATABASE_URL -f db/migrations/001_initial.sql
-# Optionally seed with test data:
-node apps/server/scripts/seed.js
-```
-
-### 3. Configure environment
-
-```bash
-cp .env.example .env
-# Fill in all values — see .env.example for instructions
-```
-
-### 4. GitHub App setup
-
-1. Go to **GitHub → Settings → Developer Settings → GitHub Apps → New**
-2. Set **Webhook URL** to your ngrok URL: `https://xxxx.ngrok.io/api/github/webhooks`
-3. Set permissions: Checks (R/W), Contents (R), Pull Requests (R/W), Metadata (R)
-4. Subscribe to events: `pull_request`, `check_run`
-5. Download the private key `.pem`, base64-encode it, paste into `.env`
-
-### 5. Start everything
-
+### 3. Start Services
 ```bash
 # Terminal 1 — Node server
 cd apps/server && npm run dev
 
-# Terminal 2 — Python NLP
-cd apps/nlp && uvicorn main:app --reload --port 8000
-
-# Terminal 3 — React dashboard
+# Terminal 2 — React dashboard
 cd apps/web && npm run dev
 
-# Terminal 4 — ngrok (for webhook testing)
+# Terminal 3 — ngrok (for webhooks)
 ngrok http 3000
 ```
 
 ---
 
-## Running Tests
+##  Core Engineering Decisions
 
-```bash
-cd apps/server && npm test
-```
+### 1. Deterministic NLP over Generative LLMs
+While it is tempting to pass commit messages to GPT-4 to explain regressions, DeployGuard uses a custom `scikit-learn` LogisticRegression model trained on TF-IDF word vectors from 200+ developer commit messages. 
+- **Latency:** CI/CD feedback must be instant. Calling an external LLM introduces unacceptable latency and potential rate-limiting.
+- **Explainability:** In a deployment pipeline, predictability is paramount. A smaller, deterministic model allows the system to definitively explain *why* a specific confidence score was assigned based on transparent feature weights, building trust with the developers using the tool.
 
----
+### 2. Zero-Trust GitHub Authentication
+To ensure absolute security when accessing user repositories, the backend is built as a fully compliant GitHub App rather than relying on static personal access tokens.
+- The Node.js server signs a short-lived JWT using an RSA private key.
+- It exchanges this JWT for a temporary Installation Access Token scoped *strictly* to the specific repository triggering the webhook.
+- Incoming webhooks are cryptographically verified using HMAC-SHA256 signatures to prevent spoofing.
 
-## Deployment
+### 3. Strict Baseline Integrity
+Performance baselines are useless if they are corrupted by failing code. DeployGuard enforces a strict state machine for performance metrics:
+- Baselines are evaluated on every Pull Request, but they are *only* updated when a PR is successfully merged into the `main` or `master` branch **and** the performance check passes. 
+- This ensures the baseline is always anchored to a clean, production-ready state, preventing gradual performance degradation (the "boiling frog" problem).
 
-### Node server → Railway
-
-```bash
-# 1. Push to GitHub
-# 2. Connect repo in Railway → add Postgres + Redis plugins
-# 3. Set env vars in Railway dashboard
-# 4. Railway auto-deploys from Dockerfile
-```
-
-### Python NLP → Render
-
-```bash
-# 1. New Web Service → connect GitHub repo
-# 2. Root: apps/nlp | Build: pip install -r requirements.txt && python train.py
-# 3. Start: uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Dashboard → Vercel
-
-```bash
-cd apps/web
-npx vercel --prod
-```
-
----
-
-## Project Structure
-
-```
-deployguard/
-├── apps/
-│   ├── server/              # Node.js + Express
-│   │   ├── src/
-│   │   │   ├── webhook.js       # GitHub App handler
-│   │   │   ├── comment.js       # PR comment builder
-│   │   │   ├── db.js            # PostgreSQL layer
-│   │   │   ├── analysers/       # bundle.js, packageDiff.js
-│   │   │   ├── nlp/client.js    # HTTP → Python service
-│   │   │   ├── routes/api.js    # REST API + OAuth
-│   │   │   └── __tests__/       # Jest tests
-│   │   └── scripts/seed.js
-│   │
-│   ├── nlp/                 # Python FastAPI
-│   │   ├── main.py              # /classify endpoint
-│   │   ├── train.py             # 200-example trainer
-│   │   └── requirements.txt
-│   │
-│   └── web/                 # React + Vite
-│       └── src/
-│           ├── pages/           # Login, Dashboard, RepoDetail, Settings
-│           └── components/      # Navbar, RepoCard, CheckRow, MetricChart, Badge
-│
-├── db/migrations/           # SQL schema
-└── docs/                    # GitHub Actions snippet
-```
-
----
-
-## Interview Cheat Sheet
-
-**Q: How does the NLP work?**
-> Two layers: (1) deterministic — diff package.json between commits, new packages = 95% confidence. (2) scikit-learn LogisticRegression with TF-IDF on 200 labelled commit messages, threshold at 60% confidence. Chose a small interpretable model deliberately — in CI, explainability > accuracy.
-
-**Q: How do baselines stay fresh?**
-> Updated only when a PR merges to main AND passes the check — baseline always represents a clean passing state, commit SHA included for traceability.
-
-**Q: How does GitHub App auth work?**
-> JWT signed with private key → installation access token scoped per repo, auto-rotated by Octokit. Webhooks verified with HMAC-SHA256.
