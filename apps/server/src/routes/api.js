@@ -84,8 +84,8 @@ router.get('/auth/github/callback', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/auth/callback?token=${access_token}&username=${ghUser.login}&avatar=${encodeURIComponent(ghUser.avatar_url)}`);
   } catch (err) {
-    console.error('[oauth] Callback error:', err.message);
-    res.status(500).json({ error: 'OAuth callback failed' });
+    console.error('[oauth] Callback error full details:', err.response?.data || err);
+    res.status(500).json({ error: 'OAuth callback failed', details: err.response?.data || err.message || err.toString() });
   }
 });
 
