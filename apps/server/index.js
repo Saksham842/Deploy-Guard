@@ -9,6 +9,13 @@ const PORT = process.env.PORT || 3000;
 // ── Trust proxy (Railway / Render sit behind one) ──────────────────────────
 app.set('trust proxy', 1);
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+const cors = require('cors');
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
+
 // ── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'deployguard-server', ts: new Date().toISOString() });
