@@ -40,7 +40,7 @@ router.get('/auth/github', (_req, res) => {
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID,
     scope: 'read:user',
-    redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:3000'}/auth/github/callback`,
+    redirect_uri: `${(process.env.BACKEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/api/auth/github/callback`,
   });
   res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
