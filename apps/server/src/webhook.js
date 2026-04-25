@@ -51,7 +51,8 @@ async function handlePR({ octokit, payload }) {
   const thresholds = await getThresholds(repo.id);
 
   // ── 2. Post a pending check immediately so GitHub shows it in the UI ───────
-  const { data: checkRun } = await octokit.rest.checks.create({
+  const checks = octokit.rest?.checks || octokit.checks;
+  const { data: checkRun } = await checks.create({
     owner,
     repo: repoName,
     name: 'DeployGuard',
@@ -110,7 +111,7 @@ async function handlePR({ octokit, payload }) {
 
     // ── 11. Finalise check run on GitHub ─────────────────────────────────────
     const summary = buildSummary(metrics, causes);
-    await octokit.rest.checks.update({
+    await checks.update({
       owner,
       repo: repoName,
       check_run_id: checkRun.id,
@@ -138,7 +139,7 @@ async function handlePR({ octokit, payload }) {
 
     // Always resolve the check — never leave a PR permanently in_progress
     try {
-      await octokit.rest.checks.update({
+      await checks.update({
         owner,
         repo: repoName,
         check_run_id: checkRun.id,
