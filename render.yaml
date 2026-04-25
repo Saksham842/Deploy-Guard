@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: deployguard-nlp
+    runtime: docker
+    dockerfilePath: apps/nlp/Dockerfile
+    dockerContext: apps/nlp
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MODEL_DIR
+        value: "."
+    healthCheckPath: /health
+    autoDeploy: true
+    plan: free

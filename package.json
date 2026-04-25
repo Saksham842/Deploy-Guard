@@ -1,0 +1,21 @@
+{
+  "name": "deployguard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub App that baselines performance and blocks regressing PRs with NLP causation analysis",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=apps/server",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "seed": "node apps/server/scripts/seed.js",
+    "test": "npm run test --workspace=apps/server",
+    "migrate": "psql $DATABASE_URL -f db/migrations/001_initial.sql"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

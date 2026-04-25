@@ -1,0 +1,55 @@
+# This workflow goes in the REPOS that install DeployGuard.
+# Add it to: .github/workflows/deployguard.yml
+#
+# It builds your app and uploads the bundle stats as a CI artifact
+# so DeployGuard can fetch and analyse them.
+
+name: DeployGuard Bundle Stats
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  bundle-stats:
+    runs-on: ubuntu-latest
+    name: Upload bundle stats for DeployGuard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Webpack projects ─────────────────────────────────────────────────────
+      # Uncomment and adapt if you use webpack:
+      # - name: Build with webpack (stats)
+      #   run: npx webpack --profile --json > dist/stats.json
+
+      # ── Vite projects ────────────────────────────────────────────────────────
+      # Install the visualizer plugin and configure vite.config.js to output JSON:
+      # import { visualizer } from 'rollup-plugin-visualizer';
+      # plugins: [visualizer({ filename: 'dist/stats.json', template: 'raw-data' })]
+      - name: Build with Vite
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      # ── Upload artifact ───────────────────────────────────────────────────────
+      # DeployGuard looks for an artifact named exactly "bundle-stats"
+      - name: Upload bundle stats
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: dist/stats.json
+          retention-days: 7
+          if-no-files-found: warn
