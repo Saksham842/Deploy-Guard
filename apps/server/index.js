@@ -23,7 +23,8 @@ app.get('/health', (_req, res) => {
 
 // ── GitHub App webhooks  ─────────────────────────────────────────────────────
 // Must come BEFORE express.json() — Octokit needs the raw body for HMAC verification
-app.use('/api/github/webhooks', webhookMiddleware);
+// Note: The middleware itself already handles the /api/github/webhooks path
+app.use(webhookMiddleware);
 
 // ── JSON body parser ─────────────────────────────────────────────────────────
 app.use(express.json());
