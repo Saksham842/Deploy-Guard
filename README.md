@@ -131,3 +131,8 @@ Performance baselines are useless if they are corrupted by failing code. DeployG
 - Baselines are evaluated on every Pull Request, but they are *only* updated when a PR is successfully merged into the `main` or `master` branch **and** the performance check passes. 
 - This ensures the baseline is always anchored to a clean, production-ready state, preventing gradual performance degradation (the "boiling frog" problem).
 
+---
+
+<div align="center">
+  <b>Built by Saksham Hans</b>
+</div>
