@@ -87,7 +87,7 @@ function EmptyState() {
         Install the DeployGuard GitHub App on your repositories to start tracking performance regressions.
       </p>
       <a
-        href="https://github.com/apps/deployguard"
+        href="https://github.com/apps/deployguard-saksham842"
         target="_blank" rel="noopener noreferrer"
         className="btn btn-primary"
       >
