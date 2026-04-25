@@ -26,7 +26,11 @@ export default function Navbar() {
         </span>
       </Link>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+        <Link to="/docs" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}
+          className="nav-link">
+          How it works
+        </Link>
         <Link to="/dashboard" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}
           className="nav-link">
           Dashboard

@@ -8,19 +8,21 @@ export default function RepoCard({ repo }) {
   return (
     <Link to={`/repo/${repo.owner}/${repo.name}`} style={{ textDecoration: 'none' }}>
       <div className="card" style={{ cursor: 'pointer' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
-          <div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.875rem', gap: '1rem' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              <span style={{ fontSize: '1rem' }}>📦</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{repo.owner} /</span>
+              <span style={{ fontSize: '1rem', flexShrink: 0 }}>📦</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{repo.owner} /</span>
             </div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{repo.name}</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{repo.name}</h3>
           </div>
-          {lastCheck ? (
-            <Badge status={lastCheck.status} />
-          ) : (
-            <span className="badge badge-pending">No checks yet</span>
-          )}
+          <div style={{ flexShrink: 0 }}>
+            {lastCheck ? (
+              <Badge status={lastCheck.status} />
+            ) : (
+              <span className="badge badge-pending" style={{ whiteSpace: 'nowrap' }}>No checks yet</span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem' }}>
