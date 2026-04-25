@@ -54,7 +54,7 @@ function buildComment(metrics, causes, pkgDiff) {
 
   // ── Footer ─────────────────────────────────────────────────────────────────
   md += `---\n`;
-  md += `*[DeployGuard](${process.env.DASHBOARD_URL || 'https://deployguard.vercel.app'}) — `;
+  md += `*[DeployGuard](${process.env.DASHBOARD_URL || 'https://deploy-guard-web.vercel.app'}) — `;
   md += `Threshold: bundle ±${metrics[0]?.threshold ?? 10}% | `;
   md += `Powered by NLP causation engine*`;
 
