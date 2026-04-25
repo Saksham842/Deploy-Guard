@@ -28,6 +28,8 @@ const app = new App({
 app.webhooks.on('pull_request.opened',      handlePR);
 app.webhooks.on('pull_request.synchronize', handlePR);
 app.webhooks.on('pull_request.reopened',    handlePR);
+app.webhooks.on('installation.created',     handleInstallation);
+app.webhooks.on('installation_repositories.added', handleInstallation);
 
 app.webhooks.onError((error) => {
   console.error('[webhook] Error:', error);
@@ -154,6 +156,24 @@ async function handlePR({ octokit, payload }) {
       });
     } catch (updateErr) {
       console.error('[webhook] Failed to update check run after error:', updateErr);
+    }
+  }
+}
+
+// ─── Installation handler ─────────────────────────────────────────────────────
+async function handleInstallation({ payload }) {
+  const { installation, repositories, repositories_added } = payload;
+  const reposToProcess = repositories || repositories_added || [];
+  
+  console.log(`[webhook] Installation event: syncing ${reposToProcess.length} repos`);
+  
+  for (const repo of reposToProcess) {
+    const owner = installation.account.login;
+    const name = repo.name;
+    try {
+      await getOrCreateRepo(repo.id, owner, name, installation.id);
+    } catch (err) {
+      console.error(`[webhook] Failed to sync repo ${name}:`, err);
     }
   }
 }
