@@ -1,9 +1,9 @@
 export default function Login() {
   const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID
-  const API_URL = import.meta.env.VITE_API_URL || ''
+  const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
   function handleLogin() {
-    window.location.href = `${API_URL}/auth/github`
+    window.location.href = `${API_URL}/api/auth/github`
   }
 
   return (
