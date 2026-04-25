@@ -97,7 +97,23 @@ async function getRepoByGithubId(githubRepoId) {
 }
 
 async function listRepos() {
-  const { rows } = await pool.query(`SELECT * FROM repos ORDER BY created_at DESC`);
+  const { rows } = await pool.query(`
+    SELECT r.*,
+      (
+        SELECT row_to_json(c)
+        FROM checks c
+        WHERE c.repo_id = r.id
+        ORDER BY c.created_at DESC
+        LIMIT 1
+      ) AS last_check,
+      (
+        SELECT count(*)::int
+        FROM checks c
+        WHERE c.repo_id = r.id
+      ) AS check_count
+    FROM repos r
+    ORDER BY r.created_at DESC
+  `);
   return rows;
 }
 
