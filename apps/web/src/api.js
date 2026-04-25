@@ -1,4 +1,7 @@
-const API = import.meta.env.VITE_API_URL || ''
+let API = import.meta.env.VITE_API_URL || '';
+if (API && !API.startsWith('http')) API = 'https://' + API;
+API = API.replace(/\/+$/, ''); // strip trailing slashes
+if (API.endsWith('/api')) API = API.slice(0, -4); // strip trailing /api if user added it
 
 function authHeaders() {
   const token = localStorage.getItem('dg_token')
