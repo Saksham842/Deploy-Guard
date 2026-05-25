@@ -11,8 +11,12 @@ app.set('trust proxy', 1);
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const cors = require('cors');
+let frontendUrl = process.env.FRONTEND_URL || '*';
+if (typeof frontendUrl === 'string') {
+  frontendUrl = frontendUrl.trim().replace(/^['"]|['"]$/g, '');
+}
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: frontendUrl,
   credentials: true
 }));
 

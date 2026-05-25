@@ -80,8 +80,13 @@ router.get('/auth/github/callback', async (req, res) => {
       accessToken:  access_token,
     });
 
-    // Redirect dashboard with token in query string (SPA picks it up and stores in localStorage)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    if (typeof frontendUrl === 'string') {
+      frontendUrl = frontendUrl.trim().replace(/^['"]|['"]$/g, '');
+      if (!frontendUrl.startsWith('http://') && !frontendUrl.startsWith('https://')) {
+        frontendUrl = `https://${frontendUrl}`;
+      }
+    }
     res.redirect(`${frontendUrl}/auth/callback?token=${access_token}&username=${ghUser.login}&avatar=${encodeURIComponent(ghUser.avatar_url)}`);
   } catch (err) {
     console.error('[oauth] Callback error full details:', err.response?.data || err);
