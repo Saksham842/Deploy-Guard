@@ -130,12 +130,30 @@ if (isMainBranch && passed) {
     },
   ];
 
+  const [expandedSteps, setExpandedSteps] = useState({ 0: true });
+  const [userInteracted, setUserInteracted] = useState(false);
+
   useEffect(() => {
+    if (userInteracted) return;
+
+    // Auto-rotate the active expanded step on page load until user interacts
     const interval = setInterval(() => {
-      setActiveStep((s) => (s + 1) % steps.length);
+      setActiveStep((s) => {
+        const next = (s + 1) % steps.length;
+        setExpandedSteps({ [next]: true });
+        return next;
+      });
     }, 4500);
     return () => clearInterval(interval);
-  }, [steps.length]);
+  }, [steps.length, userInteracted]);
+
+  const toggleStep = (idx) => {
+    setUserInteracted(true);
+    setExpandedSteps((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  };
 
   return (
     <div className="fade-in" style={{ paddingBottom: '5rem' }}>
@@ -154,69 +172,99 @@ if (isMainBranch && passed) {
       {/* ── Step cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', maxWidth: '1080px', margin: '0 auto 5rem' }}>
         {steps.map((step, idx) => {
-          const isActive = idx === activeStep;
+          const isExpanded = !!expandedSteps[idx];
           return (
             <div
               key={idx}
-              onClick={() => setActiveStep(idx)}
+              onClick={() => toggleStep(idx)}
               style={{
                 background: 'var(--bg-card)',
-                border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                border: isExpanded ? '1px solid var(--accent)' : '1px solid var(--border)',
                 borderRadius: '14px',
                 padding: '1.5rem',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
-                transform: isActive ? 'translateY(-4px)' : 'none',
-                boxShadow: isActive ? '0 8px 30px rgba(59,130,246,0.15)' : 'none',
+                transform: isExpanded ? 'translateY(-4px)' : 'none',
+                boxShadow: isExpanded ? '0 8px 30px rgba(59,130,246,0.15)' : 'none',
                 position: 'relative',
                 overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
               }}
             >
-              {/* step number badge */}
-              <div style={{
-                position: 'absolute', top: '1rem', right: '1rem',
-                background: isActive ? 'rgba(59,130,246,0.12)' : 'var(--bg-primary)',
-                border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: '999px', padding: '0.15rem 0.55rem',
-                fontSize: '0.7rem', fontWeight: 700,
-                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                letterSpacing: '0.04em',
-              }}>
-                {idx + 1} / {steps.length}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1rem' }}>
+              <div>
+                {/* step number badge */}
                 <div style={{
-                  width: '42px', height: '42px', borderRadius: '10px',
-                  background: isActive ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.25rem',
-                  border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                  flexShrink: 0,
+                  position: 'absolute', top: '1rem', right: '1rem',
+                  background: isExpanded ? 'rgba(59,130,246,0.12)' : 'var(--bg-primary)',
+                  border: `1px solid ${isExpanded ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: '999px', padding: '0.15rem 0.55rem',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  color: isExpanded ? 'var(--accent)' : 'var(--text-muted)',
+                  letterSpacing: '0.04em',
                 }}>
-                  {step.icon}
+                  {idx + 1} / {steps.length}
                 </div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                  {step.title}
-                </h3>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1rem' }}>
+                  <div style={{
+                    width: '42px', height: '42px', borderRadius: '10px',
+                    background: isExpanded ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.25rem',
+                    border: isExpanded ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    flexShrink: 0,
+                  }}>
+                    {step.icon}
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                    {step.title}
+                  </h3>
+                </div>
+
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.65, marginBottom: '0.5rem' }}>
+                  {step.desc}
+                </p>
+
+                {/* Expandable code container */}
+                <div style={{
+                  maxHeight: isExpanded ? '600px' : '0px',
+                  opacity: isExpanded ? 1 : 0,
+                  overflow: 'hidden',
+                  transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                  marginTop: isExpanded ? '1rem' : '0px',
+                  background: '#0d1117',
+                  borderRadius: '8px',
+                  padding: isExpanded ? '0.875rem 1rem' : '0px',
+                  border: isExpanded ? '1px solid #21262d' : 'none',
+                  overflowX: 'auto',
+                }}>
+                  <pre style={{ margin: 0, fontSize: '0.75rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                    <code>{step.code}</code>
+                  </pre>
+                </div>
               </div>
 
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.65, marginBottom: '1.25rem' }}>
-                {step.desc}
-              </p>
-
-              <div style={{
-                background: '#0d1117',
-                borderRadius: '8px',
-                padding: '0.875rem 1rem',
-                border: '1px solid #21262d',
-                overflowX: 'auto',
-                opacity: isActive ? 1 : 0.65,
-                transition: 'opacity 0.3s ease',
-              }}>
-                <pre style={{ margin: 0, fontSize: '0.75rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                  <code>{step.code}</code>
-                </pre>
+              {/* Read More / Read Less button at the bottom */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: isExpanded ? 'var(--text-muted)' : 'var(--accent)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    transition: 'color 0.2s',
+                  }}
+                >
+                  {isExpanded ? (
+                    <>Read Less <span style={{ fontSize: '9px', transform: 'translateY(-1px)' }}>▲</span></>
+                  ) : (
+                    <>Read More <span style={{ fontSize: '9px', transform: 'translateY(1px)' }}>▼</span></>
+                  )}
+                </span>
               </div>
             </div>
           );
