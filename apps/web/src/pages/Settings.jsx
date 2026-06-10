@@ -1,110 +1,121 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { api } from '../api'
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { api } from '../api';
 
+// Settings page to manage performance regression thresholds for a repository.
 export default function Settings() {
-  const { owner, name } = useParams()
-  const [thresholds, setThresholds] = useState({ bundle_kb: 10, query_count: 20, api_p95_ms: 200 })
-  const [loading, setLoading]   = useState(true)
-  const [saving,  setSaving]    = useState(false)
-  const [saved,   setSaved]     = useState(false)
-  const [error,   setError]     = useState(null)
+  const { owner, name } = useParams();
+  const [thresholds, setThresholds] = useState({ bundle_kb: 10, query_count: 20, api_p95_ms: 200 });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     api.getThresholds(owner, name)
-      .then(t => { setThresholds(t); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [owner, name])
+      .then((t) => {
+        setThresholds(t);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [owner, name]);
 
   async function handleSave(e) {
-    e.preventDefault()
-    setSaving(true); setError(null); setSaved(false)
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSaved(false);
     try {
-      await api.updateThresholds(owner, name, thresholds)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      await api.updateThresholds(owner, name, thresholds);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   function handleChange(key, value) {
-    setThresholds(prev => ({ ...prev, [key]: Number(value) }))
+    setThresholds((prev) => ({ ...prev, [key]: Number(value) }));
   }
 
   return (
-    <div className="fade-in" style={{ maxWidth: 560 }}>
+    <div className="fade-in max-w-[560px]">
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-        <Link to="/dashboard" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Dashboard</Link>
+      <div className="flex items-center gap-2 mb-6 text-sm text-slate-400">
+        <Link to="/dashboard" className="text-blue-500 no-underline hover:underline">Dashboard</Link>
         <span>/</span>
-        <Link to={`/repo/${owner}/${name}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{owner}/{name}</Link>
+        <Link to={`/repo/${owner}/${name}`} className="text-blue-500 no-underline hover:underline">{owner}/{name}</Link>
         <span>/</span>
-        <span style={{ color: 'var(--text-primary)' }}>Settings</span>
+        <span className="text-white">Settings</span>
       </div>
 
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>⚙️ Threshold Settings</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '2rem' }}>
+      <h1 className="text-2xl font-extrabold mb-1 text-white">⚙️ Threshold Settings</h1>
+      <p className="text-slate-400 text-sm mb-8">
         A PR is marked as failing if any metric exceeds its threshold.
       </p>
 
       {loading ? (
-        <div>
-          {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 80, marginBottom: '1rem' }} />)}
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton h-20" />
+          ))}
         </div>
       ) : (
-        <form onSubmit={handleSave}>
-          <div className="card" style={{ marginBottom: '1rem' }}>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div className="card">
             <ThresholdField
               label="📦 Bundle Size"
               description="Maximum allowed % increase in total bundle size"
               unit="% increase"
               id="bundle_kb"
               value={thresholds.bundle_kb}
-              onChange={v => handleChange('bundle_kb', v)}
-              min={1} max={100}
+              onChange={(v) => handleChange('bundle_kb', v)}
+              min={1}
+              max={100}
             />
           </div>
 
-          <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card">
             <ThresholdField
               label="🔢 Query Count"
               description="Maximum allowed % increase in DB query count per request"
               unit="% increase"
               id="query_count"
               value={thresholds.query_count}
-              onChange={v => handleChange('query_count', v)}
-              min={1} max={100}
+              onChange={(v) => handleChange('query_count', v)}
+              min={1}
+              max={100}
             />
           </div>
 
-          <div className="card" style={{ marginBottom: '2rem' }}>
+          <div className="card !mb-8">
             <ThresholdField
               label="⚡ API p95 Latency"
               description="Maximum allowed % increase in API response time (p95)"
               unit="% increase"
               id="api_p95_ms"
               value={thresholds.api_p95_ms}
-              onChange={v => handleChange('api_p95_ms', v)}
-              min={1} max={200}
+              onChange={(v) => handleChange('api_p95_ms', v)}
+              min={1}
+              max={200}
             />
           </div>
 
           {error && (
-            <div style={{ background: 'var(--red-glow)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '0.75rem 1rem', color: 'var(--red)', marginBottom: '1rem', fontSize: '0.875rem' }}>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-500 mb-4 text-sm">
               ⚠️ {error}
             </div>
           )}
 
           {saved && (
-            <div style={{ background: 'var(--green-glow)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '0.75rem 1rem', color: 'var(--green)', marginBottom: '1rem', fontSize: '0.875rem' }}>
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-500 mb-4 text-sm">
               ✅ Thresholds saved — next check will use these values
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div className="flex gap-3">
             <button id="save-thresholds-btn" type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Save thresholds'}
             </button>
@@ -113,35 +124,36 @@ export default function Settings() {
         </form>
       )}
     </div>
-  )
+  );
 }
 
 function ThresholdField({ label, description, unit, id, value, onChange, min, max }) {
   return (
     <div>
-      <label htmlFor={id} style={{ display: 'block', fontWeight: 600, marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+      <label htmlFor={id} className="block font-semibold mb-1 text-sm text-white">
         {label}
       </label>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>{description}</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      <p className="text-slate-400 text-xs mb-3">{description}</p>
+      <div className="flex items-center gap-3">
         <input
           id={id}
           type="number"
-          className="input"
+          className="input max-w-[120px]"
           value={value}
-          min={min} max={max}
-          onChange={e => onChange(e.target.value)}
-          style={{ maxWidth: 120 }}
+          min={min}
+          max={max}
+          onChange={(e) => onChange(e.target.value)}
         />
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{unit}</span>
+        <span className="text-slate-400 text-sm">{unit}</span>
         <input
           type="range"
-          min={min} max={max}
+          min={min}
+          max={max}
           value={value}
-          onChange={e => onChange(e.target.value)}
-          style={{ flex: 1, accentColor: 'var(--accent)' }}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 accent-blue-500"
         />
       </div>
     </div>
-  )
+  );
 }

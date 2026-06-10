@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+// Documentation / How-it-works page explaining the inner workings, NLP tiers, and webhook structure.
 export default function Docs() {
   const [activeStep, setActiveStep] = useState(0);
 
@@ -136,7 +137,6 @@ if (isMainBranch && passed) {
   useEffect(() => {
     if (userInteracted || popupStep !== null) return;
 
-    // Auto-rotate the active background step on page load until user interacts
     const interval = setInterval(() => {
       setActiveStep((s) => (s + 1) % steps.length);
     }, 4500);
@@ -150,185 +150,151 @@ if (isMainBranch && passed) {
 
   return (
     <>
-      <div className="fade-in" style={{ paddingBottom: '5rem' }}>
-
-      {/* ── Header ── */}
-      <div style={{ textAlign: 'center', marginBottom: '4rem', marginTop: '2rem' }}>
-        <h1 style={{ fontSize: '3rem', fontWeight: 800, letterSpacing: '-0.04em', marginBottom: '1rem' }}>
-          How <span style={{ color: 'var(--accent)' }}>DeployGuard</span> Works
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '640px', margin: '0 auto', lineHeight: 1.7 }}>
-          A transparent look at the event-driven architecture, semantic NLP pipeline,
-          and baseline logic that powers every PR check.
-        </p>
-      </div>
-
-      {/* ── Step cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', maxWidth: '1080px', margin: '0 auto 5rem' }}>
-        {steps.map((step, idx) => {
-          const isActive = idx === activeStep;
-          return (
-            <div
-              key={idx}
-              onClick={() => openStepDetails(idx)}
-              style={{
-                background: 'var(--bg-card)',
-                border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                borderRadius: '14px',
-                padding: '1.5rem',
-                cursor: 'pointer',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: isActive ? 'translateY(-4px)' : 'none',
-                boxShadow: isActive ? '0 8px 30px rgba(59,130,246,0.15)' : 'none',
-                position: 'relative',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                minHeight: '190px',
-              }}
-              className="hover:border-blue-500/50 hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] group"
-            >
-              <div>
-                {/* step number badge */}
-                <div style={{
-                  position: 'absolute', top: '1rem', right: '1rem',
-                  background: isActive ? 'rgba(59,130,246,0.12)' : 'var(--bg-primary)',
-                  border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: '999px', padding: '0.15rem 0.55rem',
-                  fontSize: '0.7rem', fontWeight: 700,
-                  color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                  letterSpacing: '0.04em',
-                }}>
-                  {idx + 1} / {steps.length}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1rem' }}>
-                  <div style={{
-                    width: '42px', height: '42px', borderRadius: '10px',
-                    background: isActive ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.25rem',
-                    border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    flexShrink: 0,
-                  }}>
-                    {step.icon}
-                  </div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                    {step.title}
-                  </h3>
-                </div>
-
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '0.5rem' }}>
-                  {step.desc}
-                </p>
-              </div>
-
-              {/* Read More button at the bottom */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <span
-                  style={{
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    color: 'var(--accent)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    transition: 'all 0.2s',
-                  }}
-                  className="group-hover:translate-x-1"
-                >
-                  Read More <span style={{ fontSize: '10px' }}>→</span>
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── NLP 3-Tier Pipeline section ── */}
-      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
-            🧠 NLP 3-Tier Classification Pipeline
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '560px', margin: '0 auto' }}>
-            Every commit message travels through these tiers in order — escalating only when the local model isn't confident enough.
+      <div className="fade-in pb-20">
+        {/* Header */}
+        <div className="text-center mb-16 mt-8">
+          <h1 className="text-5xl font-extrabold tracking-tight mb-4 text-white">
+            How <span className="text-blue-500">DeployGuard</span> Works
+          </h1>
+          <p className="text-slate-300 text-lg max-w-[640px] mx-auto leading-relaxed">
+            A transparent look at the event-driven architecture, semantic NLP pipeline,
+            and baseline logic that powers every PR check.
           </p>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {nlpTiers.map((tier, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{
-                width: '100%',
-                background: 'var(--bg-card)',
-                border: `1px solid ${tier.color}44`,
-                borderRadius: '12px',
-                padding: '1.25rem 1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1.25rem',
-                transition: 'box-shadow 0.2s',
-                boxShadow: `0 0 0 1px ${tier.color}22, 0 4px 24px ${tier.glow}`,
-              }}>
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px', flexShrink: 0,
-                  background: tier.glow, border: `1px solid ${tier.color}66`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
-                }}>
-                  {tier.icon}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
-                      color: tier.color, textTransform: 'uppercase',
-                      background: tier.glow, padding: '0.15rem 0.5rem', borderRadius: '999px',
-                      border: `1px solid ${tier.color}44`,
-                    }}>{tier.tier}</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{tier.label}</span>
+        {/* Step cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-[1080px] mx-auto mb-20">
+          {steps.map((step, idx) => {
+            const isActive = idx === activeStep;
+            return (
+              <div
+                key={idx}
+                onClick={() => openStepDetails(idx)}
+                className={`bg-[#0f1629]/75 rounded-2xl p-6 cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[190px] border transition-all duration-300 ${
+                  isActive
+                    ? 'border-blue-500 -translate-y-1 shadow-[0_8px_30px_rgba(59,130,246,0.15)]'
+                    : 'border-[#1e2d4a]/80 hover:border-blue-500/50 hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)]'
+                } group`}
+              >
+                <div>
+                  {/* Step counter badge */}
+                  <div
+                    className={`absolute top-4 right-4 border rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider transition-colors duration-300 ${
+                      isActive ? 'bg-blue-500/12 border-blue-500 text-blue-500' : 'bg-[#070b14] border-[#1e2d4a]/80 text-slate-400'
+                    }`}
+                  >
+                    {idx + 1} / {steps.length}
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{tier.detail}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>{tier.badge}</div>
+
+                  <div className="flex items-center gap-3 mb-4">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg border flex-shrink-0 transition-colors duration-300 ${
+                        isActive ? 'bg-blue-500/10 border-blue-500' : 'bg-[#070b14] border-[#1e2d4a]/80'
+                      }`}
+                    >
+                      {step.icon}
+                    </div>
+                    <h3 className="text-base font-bold text-white leading-tight">
+                      {step.title}
+                    </h3>
+                  </div>
+
+                  <p className="text-slate-300 text-sm leading-relaxed mb-2">
+                    {step.desc}
+                  </p>
                 </div>
 
-                <div style={{
-                  fontSize: '0.75rem', color: tier.color,
-                  background: tier.glow, border: `1px solid ${tier.color}33`,
-                  borderRadius: '8px', padding: '0.375rem 0.75rem',
-                  fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-                  maxWidth: '200px', textAlign: 'center', lineHeight: 1.4,
-                }}>
-                  {tier.condition}
+                <div className="flex justify-end mt-4">
+                  <span className="text-xs font-bold text-blue-500 inline-flex items-center gap-1 transition-all duration-200 group-hover:translate-x-1">
+                    Read More <span className="text-[10px]">→</span>
+                  </span>
                 </div>
               </div>
-
-              {/* connector arrow */}
-              {i < nlpTiers.length - 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.25rem 0', gap: '2px' }}>
-                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>low confidence</div>
-                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
-                  <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>▼</div>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* model output example */}
-        <div style={{
-          marginTop: '2rem',
-          background: '#0d1117', borderRadius: '12px',
-          border: '1px solid #21262d', padding: '1.25rem 1.5rem',
-        }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-            📦 Example classifier response (v2)
+        {/* NLP 3-Tier Pipeline section */}
+        <div className="max-w-[860px] mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-extrabold tracking-tight mb-2 text-white">
+              🧠 NLP 3-Tier Classification Pipeline
+            </h2>
+            <p className="text-slate-300 text-sm max-w-[560px] mx-auto leading-relaxed">
+              Every commit message travels through these tiers in order — escalating only when the local model isn't confident enough.
+            </p>
           </div>
-          <pre style={{ margin: 0, fontSize: '0.8rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.8 }}>
-            <code>{`{
+
+          <div className="flex flex-col gap-0">
+            {nlpTiers.map((tier, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <div
+                  className="w-full bg-[#0f1629]/75 rounded-xl p-5 flex items-center gap-5 transition-shadow duration-200 shadow-lg border"
+                  style={{
+                    border: `1px solid ${tier.color}44`,
+                    boxShadow: `0 0 0 1px ${tier.color}22, 0 4px 24px ${tier.glow}`,
+                  }}
+                >
+                  <div
+                    className="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center text-xl border"
+                    style={{
+                      background: tier.glow,
+                      borderColor: `${tier.color}66`,
+                    }}
+                  >
+                    {tier.icon}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 mb-1 flex-wrap">
+                      <span
+                        className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border"
+                        style={{
+                          color: tier.color,
+                          background: tier.glow,
+                          borderColor: `${tier.color}44`,
+                        }}
+                      >
+                        {tier.tier}
+                      </span>
+                      <span className="text-base font-bold text-white">{tier.label}</span>
+                    </div>
+                    <div className="text-xs text-slate-300 mb-1">{tier.detail}</div>
+                    <div className="text-xs text-slate-500 font-mono">{tier.badge}</div>
+                  </div>
+
+                  <div
+                    className="text-xs font-semibold whitespace-nowrap flex-shrink-0 max-w-[200px] text-center leading-relaxed border rounded-lg px-3 py-1.5"
+                    style={{
+                      color: tier.color,
+                      background: tier.glow,
+                      borderColor: `${tier.color}33`,
+                    }}
+                  >
+                    {tier.condition}
+                  </div>
+                </div>
+
+                {/* Connector Arrow */}
+                {i < nlpTiers.length - 1 && (
+                  <div className="flex flex-col items-center py-1 gap-0.5">
+                    <div className="w-[2px] h-3 bg-[#1e2d4a]/80" />
+                    <div className="text-[10px] text-slate-500 font-semibold tracking-wider">low confidence</div>
+                    <div className="w-[2px] h-3 bg-[#1e2d4a]/80" />
+                    <div className="text-sm text-slate-500">▼</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Model Output Example */}
+          <div className="mt-8 bg-[#0d1117] rounded-xl border border-[#21262d] p-5">
+            <div className="text-xs text-slate-500 font-semibold tracking-widest uppercase mb-3">
+              📦 Example classifier response (v2)
+            </div>
+            <pre className="m-0 text-xs text-[#c9d1d9] font-mono leading-relaxed">
+              <code>{`{
   "cause":         "bundle_size",
   "confidence":    0.94,
   "model_version": "v2-sentence-transformers",
@@ -340,168 +306,75 @@ if (isMainBranch && passed) {
     "dependency_bloat":  0.01
   }
 }`}</code>
-          </pre>
+            </pre>
+          </div>
         </div>
       </div>
-    </div>
 
-      {/* ── Pop-up Modal ── */}
+      {/* Pop-up Modal */}
       {popupStep !== null && (() => {
         const step = steps[popupStep];
         return (
           <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(7, 11, 20, 0.85)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              padding: '1.5rem',
-              animation: 'fadeIn 0.25s ease-out forwards',
-            }}
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-[#070b14]/85 backdrop-blur-md p-6 animate-[fadeIn_0.25s_ease-out_forwards]"
             onClick={() => setPopupStep(null)}
           >
             <div
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: '20px',
-                padding: '2.5rem',
-                maxWidth: '800px',
-                width: '100%',
-                maxHeight: '90vh',
-                overflowY: 'auto',
-                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 40px rgba(59, 130, 246, 0.15)',
-                position: 'relative',
-                animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
-              }}
+              className="bg-[#0f1629] border border-[#1e2d4a]/85 rounded-3xl p-10 max-w-[800px] w-full max-h-[90vh] overflow-y-auto shadow-2xl relative animate-[scaleIn_0.3s_cubic-bezier(0.34,1.56,0.64,1)_forwards]"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close button */}
+              {/* Close Button */}
               <button
                 onClick={() => setPopupStep(null)}
-                style={{
-                  position: 'absolute',
-                  top: '1.25rem',
-                  right: '1.25rem',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '50%',
-                  width: '36px',
-                  height: '36px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-secondary)',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                className="hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-500 hover:rotate-90"
+                className="absolute top-5 right-5 bg-white/5 border border-[#1e2d4a]/80 rounded-full w-9 h-9 flex items-center justify-center text-slate-300 text-base cursor-pointer transition-all hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-500 hover:rotate-90"
               >
                 ✕
               </button>
 
               {/* Step counter */}
-              <div style={{
-                display: 'inline-flex',
-                background: 'rgba(59, 130, 246, 0.12)',
-                border: '1px solid var(--accent)',
-                borderRadius: '999px',
-                padding: '0.25rem 0.75rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                color: 'var(--accent)',
-                letterSpacing: '0.06em',
-                marginBottom: '1.5rem',
-                textTransform: 'uppercase',
-              }}>
+              <div className="inline-flex bg-blue-500/12 border border-blue-500 rounded-full px-3 py-1 text-xs font-bold text-blue-500 tracking-widest mb-6 uppercase">
                 Step {popupStep + 1} of {steps.length}
               </div>
 
               {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                <div style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '14px',
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid var(--accent)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.75rem',
-                  boxShadow: '0 0 20px rgba(59, 130, 246, 0.2)',
-                }}>
+              <div className="flex items-center gap-5 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/15 border border-blue-500 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(59,130,246,0.2)]">
                   {step.icon}
                 </div>
                 <div>
-                  <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+                  <h2 className="text-3xl font-extrabold text-white m-0 tracking-tight">
                     {step.title}
                   </h2>
                 </div>
               </div>
 
               {/* Description */}
-              <p style={{
-                color: 'var(--text-secondary)',
-                fontSize: '1.05rem',
-                lineHeight: 1.7,
-                marginBottom: '2rem',
-              }}>
+              <p className="text-slate-300 text-base leading-relaxed mb-8">
                 {step.desc}
               </p>
 
               {/* Code title */}
-              <div style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                color: 'var(--text-muted)',
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                marginBottom: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}>
+              <div className="text-xs text-slate-500 font-semibold tracking-widest uppercase mb-3 flex items-center gap-2">
                 <span>🖥️</span>
                 <span>Implementation Example</span>
               </div>
 
               {/* Code */}
-              <div style={{
-                background: '#0d1117',
-                borderRadius: '12px',
-                padding: '1.25rem 1.5rem',
-                border: '1px solid #21262d',
-                overflowX: 'auto',
-                boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.8)',
-              }}>
-                <pre style={{ margin: 0, fontSize: '0.825rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+              <div className="bg-[#0d1117] rounded-xl p-5 border border-[#21262d] overflow-x-auto shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
+                <pre className="m-0 text-xs text-[#c9d1d9] font-mono leading-relaxed whitespace-pre-wrap">
                   <code>{step.code}</code>
                 </pre>
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem' }}>
+              <div className="flex justify-end mt-8">
                 <button
                   onClick={() => setPopupStep(null)}
-                  className="btn btn-primary"
-                  style={{
-                    padding: '0.625rem 1.75rem',
-                    fontSize: '0.85rem',
-                    borderRadius: '10px',
-                    fontWeight: 700,
-                  }}
+                  className="btn btn-primary px-7 py-2.5 text-xs rounded-xl font-bold"
                 >
                   Got It
                 </button>
               </div>
-
             </div>
           </div>
         );
