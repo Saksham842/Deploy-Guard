@@ -22,9 +22,9 @@ export default function App() {
         <Route
           path="/*"
           element={
-            <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="min-h-screen flex flex-col bg-[#0a0e1a]">
               <Navbar />
-              <main style={{ flex: 1, padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+              <main className="flex-1 p-6 sm:p-8 max-w-[1200px] mx-auto w-full relative">
                 <Routes>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/docs" element={<Docs />} />

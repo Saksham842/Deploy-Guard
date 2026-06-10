@@ -1,6 +1,6 @@
-@import "tailwindcss";
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@import "tailwindcss";
 
 :root {
   --bg-primary: #0a0e1a;
@@ -20,7 +20,9 @@
   --text-muted: #475569;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+@layer base {
+  * { box-sizing: border-box; }
+}
 
 body {
   font-family: 'Inter', system-ui, sans-serif;

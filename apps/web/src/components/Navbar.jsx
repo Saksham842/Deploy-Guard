@@ -1,52 +1,63 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Navbar() {
-  const navigate = useNavigate()
-  const username  = localStorage.getItem('dg_username')
-  const avatar    = localStorage.getItem('dg_avatar')
+  const navigate = useNavigate();
+  const username = localStorage.getItem('dg_username');
+  const avatar = localStorage.getItem('dg_avatar');
 
   function handleLogout() {
-    localStorage.clear()
-    navigate('/login')
+    localStorage.clear();
+    navigate('/login');
   }
 
   return (
-    <nav style={{
-      background: 'var(--bg-card)',
-      borderBottom: '1px solid var(--border)',
-      padding: '0 2rem',
-      height: '60px',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      position: 'sticky', top: 0, zIndex: 100,
-    }}>
-      <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', textDecoration: 'none' }}>
-        <span style={{ fontSize: '1.25rem' }}>🛡️</span>
-        <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-          Deploy<span style={{ color: 'var(--accent)' }}>Guard</span>
+    <nav className="bg-[#0f1629]/95 border-b border-[#1e2d4a]/80 px-6 sm:px-8 h-[60px] flex items-center justify-between sticky top-0 z-50 backdrop-blur-md">
+      
+      {/* Brand logo and link */}
+      <Link to="/dashboard" className="flex items-center gap-2 no-underline">
+        <span className="text-xl">🛡️</span>
+        <span className="font-extrabold text-sm text-white tracking-tight">
+          Deploy<span className="text-blue-500">Guard</span>
         </span>
       </Link>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-        <Link to="/docs" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}
-          className="nav-link">
+      {/* Nav Actions */}
+      <div className="flex items-center gap-6">
+        <Link
+          to="/docs"
+          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+        >
           How it works
         </Link>
-        <Link to="/dashboard" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}
-          className="nav-link">
+        <Link
+          to="/dashboard"
+          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+        >
           Dashboard
         </Link>
+        
         {username && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="flex items-center gap-3 pl-3 border-l border-[#1e2d4a]/80">
             {avatar && (
-              <img src={avatar} alt={username} style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid var(--border)' }} />
+              <img
+                src={avatar}
+                alt={username}
+                className="w-7 h-7 rounded-full border border-[#1e2d4a]/85"
+              />
             )}
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{username}</span>
-            <button className="btn btn-ghost" style={{ padding: '0.375rem 0.75rem', fontSize: '0.8rem' }} onClick={handleLogout}>
+            <span className="text-slate-400 text-xs font-medium hidden sm:inline">
+              {username}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="px-2.5 py-1.5 border border-[#1e2d4a]/85 hover:border-blue-500/80 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white bg-transparent transition-all hover:bg-[#141d35] cursor-pointer"
+            >
               Sign out
             </button>
           </div>
         )}
       </div>
+
     </nav>
-  )
+  );
 }
