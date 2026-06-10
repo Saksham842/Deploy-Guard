@@ -133,6 +133,8 @@ class SingleCommitRequest(BaseModel):
     removed_packages: List[str] = []
 
 class Cause(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     cause_type: str
     detail: str
     confidence: float
