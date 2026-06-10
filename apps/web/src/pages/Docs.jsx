@@ -130,29 +130,22 @@ if (isMainBranch && passed) {
     },
   ];
 
-  const [expandedSteps, setExpandedSteps] = useState({ 0: true });
+  const [popupStep, setPopupStep] = useState(null);
   const [userInteracted, setUserInteracted] = useState(false);
 
   useEffect(() => {
-    if (userInteracted) return;
+    if (userInteracted || popupStep !== null) return;
 
-    // Auto-rotate the active expanded step on page load until user interacts
+    // Auto-rotate the active background step on page load until user interacts
     const interval = setInterval(() => {
-      setActiveStep((s) => {
-        const next = (s + 1) % steps.length;
-        setExpandedSteps({ [next]: true });
-        return next;
-      });
+      setActiveStep((s) => (s + 1) % steps.length);
     }, 4500);
     return () => clearInterval(interval);
-  }, [steps.length, userInteracted]);
+  }, [steps.length, userInteracted, popupStep]);
 
-  const toggleStep = (idx) => {
+  const openStepDetails = (idx) => {
     setUserInteracted(true);
-    setExpandedSteps((prev) => ({
-      ...prev,
-      [idx]: !prev[idx],
-    }));
+    setPopupStep(idx);
   };
 
   return (
@@ -172,36 +165,38 @@ if (isMainBranch && passed) {
       {/* ── Step cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', maxWidth: '1080px', margin: '0 auto 5rem' }}>
         {steps.map((step, idx) => {
-          const isExpanded = !!expandedSteps[idx];
+          const isActive = idx === activeStep;
           return (
             <div
               key={idx}
-              onClick={() => toggleStep(idx)}
+              onClick={() => openStepDetails(idx)}
               style={{
                 background: 'var(--bg-card)',
-                border: isExpanded ? '1px solid var(--accent)' : '1px solid var(--border)',
+                border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                 borderRadius: '14px',
                 padding: '1.5rem',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                transform: isExpanded ? 'translateY(-4px)' : 'none',
-                boxShadow: isExpanded ? '0 8px 30px rgba(59,130,246,0.15)' : 'none',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                transform: isActive ? 'translateY(-4px)' : 'none',
+                boxShadow: isActive ? '0 8px 30px rgba(59,130,246,0.15)' : 'none',
                 position: 'relative',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
+                minHeight: '190px',
               }}
+              className="hover:border-blue-500/50 hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] group"
             >
               <div>
                 {/* step number badge */}
                 <div style={{
                   position: 'absolute', top: '1rem', right: '1rem',
-                  background: isExpanded ? 'rgba(59,130,246,0.12)' : 'var(--bg-primary)',
-                  border: `1px solid ${isExpanded ? 'var(--accent)' : 'var(--border)'}`,
+                  background: isActive ? 'rgba(59,130,246,0.12)' : 'var(--bg-primary)',
+                  border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
                   borderRadius: '999px', padding: '0.15rem 0.55rem',
                   fontSize: '0.7rem', fontWeight: 700,
-                  color: isExpanded ? 'var(--accent)' : 'var(--text-muted)',
+                  color: isActive ? 'var(--accent)' : 'var(--text-muted)',
                   letterSpacing: '0.04em',
                 }}>
                   {idx + 1} / {steps.length}
@@ -210,10 +205,10 @@ if (isMainBranch && passed) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1rem' }}>
                   <div style={{
                     width: '42px', height: '42px', borderRadius: '10px',
-                    background: isExpanded ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
+                    background: isActive ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '1.25rem',
-                    border: isExpanded ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                     flexShrink: 0,
                   }}>
                     {step.icon}
@@ -223,53 +218,194 @@ if (isMainBranch && passed) {
                   </h3>
                 </div>
 
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.65, marginBottom: '0.5rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '0.5rem' }}>
                   {step.desc}
                 </p>
-
-                {/* Expandable code container */}
-                <div style={{
-                  maxHeight: isExpanded ? '600px' : '0px',
-                  opacity: isExpanded ? 1 : 0,
-                  overflow: 'hidden',
-                  transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-                  marginTop: isExpanded ? '1rem' : '0px',
-                  background: '#0d1117',
-                  borderRadius: '8px',
-                  padding: isExpanded ? '0.875rem 1rem' : '0px',
-                  border: isExpanded ? '1px solid #21262d' : 'none',
-                  overflowX: 'auto',
-                }}>
-                  <pre style={{ margin: 0, fontSize: '0.75rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                    <code>{step.code}</code>
-                  </pre>
-                </div>
               </div>
 
-              {/* Read More / Read Less button at the bottom */}
+              {/* Read More button at the bottom */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <span
                   style={{
                     fontSize: '0.8rem',
                     fontWeight: 700,
-                    color: isExpanded ? 'var(--text-muted)' : 'var(--accent)',
+                    color: 'var(--accent)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.25rem',
-                    transition: 'color 0.2s',
+                    transition: 'all 0.2s',
                   }}
+                  className="group-hover:translate-x-1"
                 >
-                  {isExpanded ? (
-                    <>Read Less <span style={{ fontSize: '9px', transform: 'translateY(-1px)' }}>▲</span></>
-                  ) : (
-                    <>Read More <span style={{ fontSize: '9px', transform: 'translateY(1px)' }}>▼</span></>
-                  )}
+                  Read More <span style={{ fontSize: '10px' }}>→</span>
                 </span>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* ── Pop-up Modal ── */}
+      {popupStep !== null && (() => {
+        const step = steps[popupStep];
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(7, 11, 20, 0.85)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              padding: '1.5rem',
+              animation: 'fadeIn 0.2s ease-out forwards',
+            }}
+            onClick={() => setPopupStep(null)}
+          >
+            <div
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: '20px',
+                padding: '2.5rem',
+                maxWidth: '800px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 40px rgba(59, 130, 246, 0.15)',
+                position: 'relative',
+                animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setPopupStep(null)}
+                style={{
+                  position: 'absolute',
+                  top: '1.25rem',
+                  right: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-secondary)',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                className="hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-500 hover:rotate-90"
+              >
+                ✕
+              </button>
+
+              {/* Step counter */}
+              <div style={{
+                display: 'inline-flex',
+                background: 'rgba(59, 130, 246, 0.12)',
+                border: '1px solid var(--accent)',
+                borderRadius: '999px',
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                color: 'var(--accent)',
+                letterSpacing: '0.06em',
+                marginBottom: '1.5rem',
+                textTransform: 'uppercase',
+              }}>
+                Step {popupStep + 1} of {steps.length}
+              </div>
+
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '14px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  border: '1px solid var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.75rem',
+                  boxShadow: '0 0 20px rgba(59, 130, 246, 0.2)',
+                }}>
+                  {step.icon}
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+                    {step.title}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Description */}
+              <p style={{
+                color: 'var(--text-secondary)',
+                fontSize: '1.05rem',
+                lineHeight: 1.7,
+                marginBottom: '2rem',
+              }}>
+                {step.desc}
+              </p>
+
+              {/* Code title */}
+              <div style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                marginBottom: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}>
+                <span>🖥️</span>
+                <span>Implementation Example</span>
+              </div>
+
+              {/* Code */}
+              <div style={{
+                background: '#0d1117',
+                borderRadius: '12px',
+                padding: '1.25rem 1.5rem',
+                border: '1px solid #21262d',
+                overflowX: 'auto',
+                boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.8)',
+              }}>
+                <pre style={{ margin: 0, fontSize: '0.825rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                  <code>{step.code}</code>
+                </pre>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem' }}>
+                <button
+                  onClick={() => setPopupStep(null)}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.625rem 1.75rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '10px',
+                    fontWeight: 700,
+                  }}
+                >
+                  Got It
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── NLP 3-Tier Pipeline section ── */}
       <div style={{ maxWidth: '860px', margin: '0 auto' }}>
