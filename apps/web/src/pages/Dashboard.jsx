@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import RepoCard from '../components/RepoCard';
-import ParticleBackground from '../components/ParticleBackground';
 
 export default function Dashboard() {
   const [repos, setRepos] = useState([]);
@@ -19,9 +18,7 @@ export default function Dashboard() {
   const totalChecks = repos.reduce((acc, r) => acc + (r.check_count || 0), 0);
 
   return (
-    <div className="animate-[fadeIn_0.4s_ease_forwards] relative z-10">
-      {/* Particle canvas background */}
-      <ParticleBackground />
+    <div className="animate-[fadeIn_0.4s_ease_forwards]">
 
       {/* Header */}
       <div className="mb-8 relative z-10">

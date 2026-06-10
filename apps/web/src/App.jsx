@@ -22,7 +22,7 @@ export default function App() {
         <Route
           path="/*"
           element={
-            <div className="min-h-screen flex flex-col bg-[#0a0e1a]">
+            <div className="min-h-screen flex flex-col bg-[#070b14]">
               <Navbar />
               <main className="flex-1 p-6 sm:p-8 max-w-[1200px] mx-auto w-full relative">
                 <Routes>
