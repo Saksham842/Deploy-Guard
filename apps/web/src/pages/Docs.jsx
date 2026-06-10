@@ -149,7 +149,8 @@ if (isMainBranch && passed) {
   };
 
   return (
-    <div className="fade-in" style={{ paddingBottom: '5rem' }}>
+    <>
+      <div className="fade-in" style={{ paddingBottom: '5rem' }}>
 
       {/* ── Header ── */}
       <div style={{ textAlign: 'center', marginBottom: '4rem', marginTop: '2rem' }}>
@@ -245,6 +246,105 @@ if (isMainBranch && passed) {
         })}
       </div>
 
+      {/* ── NLP 3-Tier Pipeline section ── */}
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
+            🧠 NLP 3-Tier Classification Pipeline
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '560px', margin: '0 auto' }}>
+            Every commit message travels through these tiers in order — escalating only when the local model isn't confident enough.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+          {nlpTiers.map((tier, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{
+                width: '100%',
+                background: 'var(--bg-card)',
+                border: `1px solid ${tier.color}44`,
+                borderRadius: '12px',
+                padding: '1.25rem 1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1.25rem',
+                transition: 'box-shadow 0.2s',
+                boxShadow: `0 0 0 1px ${tier.color}22, 0 4px 24px ${tier.glow}`,
+              }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px', flexShrink: 0,
+                  background: tier.glow, border: `1px solid ${tier.color}66`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
+                }}>
+                  {tier.icon}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
+                      color: tier.color, textTransform: 'uppercase',
+                      background: tier.glow, padding: '0.15rem 0.5rem', borderRadius: '999px',
+                      border: `1px solid ${tier.color}44`,
+                    }}>{tier.tier}</span>
+                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{tier.label}</span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{tier.detail}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>{tier.badge}</div>
+                </div>
+
+                <div style={{
+                  fontSize: '0.75rem', color: tier.color,
+                  background: tier.glow, border: `1px solid ${tier.color}33`,
+                  borderRadius: '8px', padding: '0.375rem 0.75rem',
+                  fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+                  maxWidth: '200px', textAlign: 'center', lineHeight: 1.4,
+                }}>
+                  {tier.condition}
+                </div>
+              </div>
+
+              {/* connector arrow */}
+              {i < nlpTiers.length - 1 && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.25rem 0', gap: '2px' }}>
+                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>low confidence</div>
+                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>▼</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* model output example */}
+        <div style={{
+          marginTop: '2rem',
+          background: '#0d1117', borderRadius: '12px',
+          border: '1px solid #21262d', padding: '1.25rem 1.5rem',
+        }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+            📦 Example classifier response (v2)
+          </div>
+          <pre style={{ margin: 0, fontSize: '0.8rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.8 }}>
+            <code>{`{
+  "cause":         "bundle_size",
+  "confidence":    0.94,
+  "model_version": "v2-sentence-transformers",
+  "via_groq":      false,
+  "all_scores": {
+    "bundle_size":       0.94,
+    "query_regression":  0.03,
+    "latency_spike":     0.02,
+    "dependency_bloat":  0.01
+  }
+}`}</code>
+          </pre>
+        </div>
+      </div>
+    </div>
+
       {/* ── Pop-up Modal ── */}
       {popupStep !== null && (() => {
         const step = steps[popupStep];
@@ -261,7 +361,7 @@ if (isMainBranch && passed) {
               backdropFilter: 'blur(12px)',
               WebkitBackdropFilter: 'blur(12px)',
               padding: '1.5rem',
-              animation: 'fadeIn 0.2s ease-out forwards',
+              animation: 'fadeIn 0.25s ease-out forwards',
             }}
             onClick={() => setPopupStep(null)}
           >
@@ -406,104 +506,6 @@ if (isMainBranch && passed) {
           </div>
         );
       })()}
-
-      {/* ── NLP 3-Tier Pipeline section ── */}
-      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
-            🧠 NLP 3-Tier Classification Pipeline
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '560px', margin: '0 auto' }}>
-            Every commit message travels through these tiers in order — escalating only when the local model isn't confident enough.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {nlpTiers.map((tier, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{
-                width: '100%',
-                background: 'var(--bg-card)',
-                border: `1px solid ${tier.color}44`,
-                borderRadius: '12px',
-                padding: '1.25rem 1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1.25rem',
-                transition: 'box-shadow 0.2s',
-                boxShadow: `0 0 0 1px ${tier.color}22, 0 4px 24px ${tier.glow}`,
-              }}>
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px', flexShrink: 0,
-                  background: tier.glow, border: `1px solid ${tier.color}66`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
-                }}>
-                  {tier.icon}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
-                      color: tier.color, textTransform: 'uppercase',
-                      background: tier.glow, padding: '0.15rem 0.5rem', borderRadius: '999px',
-                      border: `1px solid ${tier.color}44`,
-                    }}>{tier.tier}</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{tier.label}</span>
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{tier.detail}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>{tier.badge}</div>
-                </div>
-
-                <div style={{
-                  fontSize: '0.75rem', color: tier.color,
-                  background: tier.glow, border: `1px solid ${tier.color}33`,
-                  borderRadius: '8px', padding: '0.375rem 0.75rem',
-                  fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-                  maxWidth: '200px', textAlign: 'center', lineHeight: 1.4,
-                }}>
-                  {tier.condition}
-                </div>
-              </div>
-
-              {/* connector arrow */}
-              {i < nlpTiers.length - 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.25rem 0', gap: '2px' }}>
-                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>low confidence</div>
-                  <div style={{ width: '2px', height: '12px', background: 'var(--border)' }} />
-                  <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>▼</div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* model output example */}
-        <div style={{
-          marginTop: '2rem',
-          background: '#0d1117', borderRadius: '12px',
-          border: '1px solid #21262d', padding: '1.25rem 1.5rem',
-        }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-            📦 Example classifier response (v2)
-          </div>
-          <pre style={{ margin: 0, fontSize: '0.8rem', color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.8 }}>
-            <code>{`{
-  "cause":         "bundle_size",
-  "confidence":    0.94,
-  "model_version": "v2-sentence-transformers",
-  "via_groq":      false,
-  "all_scores": {
-    "bundle_size":       0.94,
-    "query_regression":  0.03,
-    "latency_spike":     0.02,
-    "dependency_bloat":  0.01
-  }
-}`}</code>
-          </pre>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
