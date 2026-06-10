@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const express = require('express');
 const { middleware: webhookMiddleware } = require('./src/webhook');
 const apiRouter = require('./src/routes/api');

@@ -5,13 +5,16 @@ RUN useradd -m -u 1001 appuser
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies first (cached layer — only rebuilds when requirements change)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source and train model at build time
+# Copy source files
 COPY . .
-RUN python train.py
+
+# Train v2 model at build time (sentence-transformers will auto-download all-MiniLM-L6-v2 ~22MB)
+# Falls back to v1 train.py if train_v2.py is absent
+RUN python train_v2.py || python train.py
 
 # Switch to non-root user
 USER appuser
