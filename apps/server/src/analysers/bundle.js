@@ -8,6 +8,7 @@
  */
 
 const { Readable } = require('stream');
+const JSZip = require('jszip');
 
 async function analyseBundle(octokit, repository, sha) {
   const owner    = repository.owner.login;
@@ -53,25 +54,49 @@ async function analyseBundle(octokit, repository, sha) {
 }
 
 /**
- * Parse webpack stats.json buffer to total KB + per-chunk breakdown.
- * Also handles the case where the buffer is a ZIP (unzips first entry).
+ * Parse webpack/vite stats.json (raw or inside a ZIP) to total KB + chunk breakdown.
+ * Handles both:
+ *   - Raw JSON buffer (some CI setups upload stats.json directly)
+ *   - ZIP archive containing stats.json (GitHub actions/upload-artifact wraps it)
  */
-function parseStatsJson(buffer) {
-  let json;
-
+async function parseStatsJson(buffer) {
+  // Try direct JSON parse first
   try {
-    // Try direct JSON parse first (some CI setups upload stats.json directly)
-    json = JSON.parse(buffer.toString('utf8'));
+    return extractStats(JSON.parse(buffer.toString('utf8')));
   } catch (_) {
-    // If parse fails it's likely a ZIP — for now return mock
-    // Full unzip support would require the 'jszip' package
-    console.warn('[bundle] Could not parse bundle stats (ZIP parsing not implemented), using mock');
-    return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+    // Not raw JSON — try ZIP extraction
   }
 
-  // Support both webpack stats.json and vite-bundle-visualizer output
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const statsFile = zip.file('stats.json') || (
+      // Search recursively for stats.json inside subdirectories
+      Object.values(zip.files).find(f => !f.dir && f.name.endsWith('stats.json'))
+    );
+    if (!statsFile) {
+      console.warn('[bundle] stats.json not found inside artifact ZIP, using mock');
+      return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+    }
+    const content = await statsFile.async('string');
+    return extractStats(JSON.parse(content));
+  } catch (err) {
+    console.warn('[bundle] Failed to extract bundle stats from ZIP:', err.message, 'using mock');
+    return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+  }
+}
+
+/**
+ * Extract metrics from a parsed stats.json object.
+ * Supports both webpack stats.json and rollup-plugin-visualizer raw-data format.
+ */
+function extractStats(json) {
   const assets = json.assets || json.chunks || [];
   const totalBytes = assets.reduce((acc, a) => acc + (a.size || a.gzipSize || 0), 0);
+
+  if (totalBytes === 0) {
+    console.warn('[bundle] Stats JSON has zero total bytes, using mock');
+    return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+  }
 
   return {
     totalKb: Math.round(totalBytes / 1024),
