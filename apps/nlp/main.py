@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from ai_features import explain_regression, review_repo
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("deployguard-nlp")
@@ -141,6 +142,24 @@ class Cause(BaseModel):
     all_scores: Optional[Dict[str, float]] = None
     model_version: Optional[str] = None
     via_groq: bool = False
+
+class ExplainRequest(BaseModel):
+    bundle_delta_kb: float
+    bundle_delta_pct: float
+    added_packages: List[str] = []
+    removed_packages: List[str] = []
+    commit_messages: List[str] = []
+    nlp_cause: str = "unknown"
+
+class ReviewRequest(BaseModel):
+    repo_name: str
+    total_checks: int
+    passed_checks: int
+    failed_checks: int
+    avg_bundle_kb: float = 0.0
+    worst_regression_kb: float = 0.0
+    most_common_cause: str = "unknown"
+    recent_packages_added: List[str] = []
 
 # ── ML inference helper ────────────────────────────────────────────────────────
 def ml_classify(text: str) -> Optional[Dict]:
@@ -423,3 +442,31 @@ async def classify_batch(req: CommitRequest):
             "detail":       cause.detail,
         })
     return results
+
+
+@app.post("/explain")
+async def explain(req: ExplainRequest):
+    explanation = await explain_regression(
+        bundle_delta_kb=req.bundle_delta_kb,
+        bundle_delta_pct=req.bundle_delta_pct,
+        added_packages=req.added_packages,
+        removed_packages=req.removed_packages,
+        commit_messages=req.commit_messages,
+        nlp_cause=req.nlp_cause,
+    )
+    return {"explanation": explanation}
+
+
+@app.post("/review")
+async def review(req: ReviewRequest):
+    report = await review_repo(
+        repo_name=req.repo_name,
+        total_checks=req.total_checks,
+        passed_checks=req.passed_checks,
+        failed_checks=req.failed_checks,
+        avg_bundle_kb=req.avg_bundle_kb,
+        worst_regression_kb=req.worst_regression_kb,
+        most_common_cause=req.most_common_cause,
+        recent_packages_added=req.recent_packages_added,
+    )
+    return {"report": report}

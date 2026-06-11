@@ -1,94 +1,110 @@
 # 🛡️ DeployGuard
 
-> **DeployGuard is a automated quality gate and performance guardrail for pull requests.** Built as an event-driven GitHub App, it measures bundle size, database query counts, and API response latency on every commit. If a pull request regresses performance past configurable limits, DeployGuard blocks the merge and runs commit messages through an **NLP Causation Engine** to explain *why* the regression happened.
+> **Automated quality gate and performance guardrail for pull requests.**
+>
+> DeployGuard is a full-stack GitHub App that monitors every PR for bundle size
+> regressions, database query regressions, and API latency spikes. It posts
+> GitHub Check Runs and PR comments with detailed metrics, NLP-powered cause
+> analysis, and **AI-generated explanations** via Groq.
 
 ---
 
-## 🎯 The Problem & Solution
+## ✨ Features
 
-### The Problem
-In modern fast-moving teams, performance regression is a "boiling frog" problem. A developer adds a heavy library, writes an inefficient N+1 database query, or introduces blocking CPU-heavy operations. Individually, these changes seem harmless, but collectively they degrade the user experience over time. Standard CI/CD tools check if tests pass, but they rarely verify if the application remains *fast*.
-
-### The Solution
-DeployGuard acts as a native gatekeeper:
-1. **GitHub App Hooks**: Subscribes to `pull_request` hooks to run automated performance audits.
-2. **Metrics baseline comparison**: Compares commit metrics against PostgreSQL baseline targets.
-3. **Automated Check Runs & PR Comments**: Posts status checks and comments directly on the pull request with a detailed breakdown.
-4. **Causation Engine**: Classifies git history using a local embedding model and fallback LLM to diagnose the root cause of performance shifts.
+| Feature | Description | Trigger |
+|---------|-------------|---------|
+| **Performance Checks** | Measures bundle size, query count, API p95 latency against baselines | Every PR commit |
+| **NLP Cause Classification** | Classifies commit messages into regression causes (local ML + Groq fallback) | After check completes |
+| **🤖 AI Regression Explanation** | Groq explains *why* a regression happened in plain English, appended to the PR comment | On check **failure** |
+| **🤖 AI Project Health Review** | Structured health report (Strengths / Risks / Recommendations) on the dashboard | User clicks "Generate AI Review" |
+| **Dashboard** | React SPA with trend charts, stats cards, and check history | Real-time |
 
 ---
 
-## 🏗️ Architecture & Data Flow
-
-DeployGuard is designed as a modular, event-driven microservices architecture spanning three environments:
+## 🏗️ Architecture
 
 ```
-                  [ GitHub PR Event ]
-                           │
-                           ▼ (HMAC SHA-256 Verified)
-            ┌─────────────────────────────┐
-            │  Express.js Webhook Server  │
-            │  (apps/server)              │
-            └──────────────┬──────────────┘
-                           │
-             ┌─────────────┴─────────────┐
-             ▼                           ▼
-      analyseBundle()             classifyCommits()
-      diffPackageJson()                  │
-             │                           ▼
-             │            ┌──────────────────────────────┐
-             │            │  FastAPI NLP Microservice    │
-             │            │  (apps/nlp)                  │
-             │            └──────────────┬───────────────┘
-             │                           │
-             └─────────────┬─────────────┘
-                           ▼
-              [ Save Metrics to Neon DB ]
-                           │
-                           ▼
-             [ Update GitHub Check Status ]
-             [ Post Automated PR Comment ]
+[GitHub PR Event]
+       │
+       ▼ (HMAC SHA-256)
+┌──────────────────────┐     ┌──────────────────────────┐
+│  Express.js Server   │────▶│  FastAPI NLP Service     │
+│  (apps/server)       │     │  (apps/nlp)              │
+│  • Webhooks          │     │  • /classify  (ML + LLM) │
+│  • Check Runs        │     │  • /explain   (Groq)     │
+│  • PR Comments       │     │  • /review    (Groq)     │
+│  • REST API          │     └──────────┬───────────────┘
+└──────────┬───────────┘                │
+           │                            │ Groq API
+           ▼                            ▼
+┌──────────────────┐          ┌──────────────────┐
+│  PostgreSQL      │          │  api.groq.com    │
+│  (Neon / local)  │          │  /chat/completions│
+└──────────────────┘          └──────────────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  React Dashboard     │
+│  (apps/web)          │
+│  • Repo overview     │
+│  • Trend charts      │
+│  • AI Health Review  │
+└──────────────────────┘
 ```
 
-### Key Engineering Decisions
+### AI Pipeline (3-Tier NLP Classification)
 
-* **3-Tier NLP Pipeline (Local ML → Groq LLM → Best Guess)**:
-  * **Tier 1 (Offline Local ML)**: Uses `sentence-transformers/all-MiniLM-L6-v2` to generate 384-dimensional semantic embeddings. If the local classifier's confidence score is $\ge 0.55$, it returns in `<50ms` without API costs.
-  * **Tier 2 (Cloud LLM Fallback)**: If the local model is unsure (e.g. vague commits like `"fix stuff"`), it calls Groq's `llama-3.1-8b-instant` to analyze the context.
-  * **Tier 3 (Graceful Degradation)**: If Groq is rate-limited or offline, it falls back to the top local guess, maintaining system availability.
-* **Service Isolation**: The Python NLP service is completely separated from the Express.js backend. This decouples CPU-bound machine learning tasks from the I/O-bound webhook receiver, allowing independent deployment and fallback handling.
-* **Strict Baseline Integrity**: Baselines are updated *only* when a PR successfully merges into the primary branch *and* passes all performance thresholds. This guarantees that temporary failures or unmerged experiments never pollute baseline targets.
-* **Zero-Trust Token Exchange**: The backend verifies incoming webhooks using HMAC-SHA256, generates short-lived RS256 JWTs, and requests temporary installation tokens scoped strictly to the active repository.
+| Tier | Engine | Latency | Trigger |
+|------|--------|---------|---------|
+| 1 | `sentence-transformers` + LogisticRegression (local) | <50 ms | Confidence ≥ 0.55 |
+| 2 | Groq `llama-3.1-8b-instant` | ~200 ms | Low ML confidence |
+| 3 | Best ML guess (graceful) | — | Groq unavailable |
+
+### AI Features (Groq-powered)
+
+| Feature | Model | Temperature | Tokens | Endpoint |
+|---------|-------|-------------|--------|----------|
+| Regression Explanation | `llama-3.3-70b-versatile` | 0.3 | 600 | `POST /explain` |
+| Project Health Review | `llama-3.3-70b-versatile` | 0.4 | 700 | `POST /review` |
+
+Both features fail **gracefully** — if Groq is down the PR comment still posts
+and the dashboard still renders.
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Tech Stack
 
-* **Frontend Dashboard (`apps/web`)**: React 18, Vite, Tailwind CSS, Recharts. Single Page Application (SPA) showcasing repository trend lines, metrics cards, and check history.
-* **Backend API (`apps/server`)**: Node.js, Express, Prisma, PostgreSQL (Neon), Octokit App. Handles incoming webhook payloads, authentication, and database writes.
-* **NLP Causation Service (`apps/nlp`)**: Python 3.11, FastAPI, Docker, `sentence-transformers`, `scikit-learn`. Converts git commit messages to vector embeddings to predict regression causes.
+| Layer | Technology | Location |
+|-------|-----------|----------|
+| **Webhook / API** | Node.js 20, Express, Octokit | `apps/server/` |
+| **Database** | PostgreSQL (raw `pg`, no ORM) | `apps/server/src/db.js` |
+| **NLP Service** | Python 3.11, FastAPI, scikit-learn, sentence-transformers | `apps/nlp/` |
+| **AI (Groq)** | Groq API via `httpx` (Python) + `axios` (Node.js bridge) | `apps/nlp/groq_client.py` |
+| **Frontend** | React 18, Vite, Tailwind CSS, Recharts | `apps/web/` |
+| **CI/CD** | GitHub Actions (bundle artifact upload) | `docs/deployguard-action.yml` |
 
 ---
 
-## 🚀 Local Development Setup
+## 🚀 Local Development
 
 ### Prerequisites
-* Node.js 20+
-* Python 3.11+
-* PostgreSQL 15+ (or Neon connection)
-* A [GitHub App](https://docs.github.com/en/apps) configuration
-* [ngrok](https://ngrok.com) (to route GitHub webhooks locally)
 
-### 1. Installation
+- Node.js 20+
+- Python 3.11+
+- PostgreSQL 15+ (or a [Neon](https://neon.tech) connection)
+- A [GitHub App](https://docs.github.com/en/apps) with webhook + checks permissions
+- [ngrok](https://ngrok.com) (to route GitHub webhooks to localhost)
+
+### 1. Install
 
 ```bash
 git clone https://github.com/Saksham842/Deploy-Guard.git
 cd Deploy-Guard
 
-# Install JS dependencies at workspace root
+# JS dependencies (workspace root)
 npm install
 
-# Setup Python environment and train local model
+# Python dependencies + train local ML model
 cd apps/nlp
 pip install -r requirements.txt
 python train_v2.py
@@ -96,26 +112,39 @@ python train_v2.py
 
 ### 2. Configure Environment
 
-Copy `.env.example` to `.env` in the root directory:
+Copy `.env.example` to `.env` at the project root and fill in your values:
+
 ```bash
 cp .env.example .env
 ```
-Ensure you set the required variables: `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `DATABASE_URL`, and `NLP_SERVICE_URL`.
+
+Required variables:
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_APP_ID` | GitHub App ID |
+| `GITHUB_WEBHOOK_SECRET` | Webhook secret (HMAC verification) |
+| `GITHUB_PRIVATE_KEY` | Base64-encoded `.pem` private key |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NLP_SERVICE_URL` | URL of the Python NLP service (`http://localhost:8000`) |
+| `GROQ_API_KEY` | Groq API key for AI features ([get one free](https://console.groq.com)) |
 
 ### 3. Start Services
 
 Run each in a separate terminal:
+
 ```bash
-# Start backend API (port 3000)
+# Backend API (port 3000)
 npm run dev:server
 
-# Start React app (port 5173)
+# React dashboard (port 5173)
 npm run dev:web
 
-# Start FastAPI server (port 8000)
+# NLP microservice (port 8000)
 cd apps/nlp && uvicorn main:app --reload --port 8000
 
-# Route webhook traffic
+# Webhook tunnel
 ngrok http 3000
 ```
 
@@ -126,13 +155,130 @@ ngrok http 3000
 ```
 Deploy-Guard/
 ├── apps/
-│   ├── server/       # Node.js Express Backend & Webhook Receiver
-│   ├── web/          # React + Vite Frontend Dashboard
-│   └── nlp/          # Python FastAPI Causation Microservice
-├── db/               # Prisma Database Schemas & Migrations
-├── render.yaml       # Infrastructure-as-code blueprint for Render
-├── package.json      # Monorepo workspaces definition
-└── .env.example      # Reference configuration environment template
+│   ├── server/                  # Node.js Express backend
+│   │   ├── index.js             # Server entry point
+│   │   ├── src/
+│   │   │   ├── webhook.js       # GitHub App event handler
+│   │   │   ├── comment.js       # PR comment builder (Markdown)
+│   │   │   ├── db.js            # pg Pool + raw SQL queries
+│   │   │   ├── routes/
+│   │   │   │   └── api.js       # REST API (repos, checks, thresholds, ai-review)
+│   │   │   ├── analysers/
+│   │   │   │   ├── bundle.js    # Bundle size from CI artifact
+│   │   │   │   └── packageDiff.js  # package.json diff
+│   │   │   └── nlp/
+│   │   │       └── client.js    # HTTP client to Python NLP service
+│   │   └── utils/
+│   │       └── groqExplain.js   # Bridge: server → NLP /explain
+│   │
+│   ├── nlp/                     # Python FastAPI NLP microservice
+│   │   ├── main.py              # FastAPI app (4 endpoints)
+│   │   ├── groq_client.py       # Shared Groq API wrapper
+│   │   ├── ai_features.py       # explain_regression + review_repo
+│   │   ├── train.py             # v1 TF-IDF training
+│   │   ├── train_v2.py          # v2 sentence-transformers training
+│   │   └── requirements.txt
+│   │
+│   └── web/                     # React + Vite dashboard
+│       ├── src/
+│       │   ├── App.jsx          # Router + auth
+│       │   ├── pages/
+│       │   │   ├── Dashboard.jsx
+│       │   │   ├── RepoDetail.jsx     # Includes AIReviewCard
+│       │   │   ├── Settings.jsx
+│       │   │   └── ...
+│       │   └── components/
+│       │       ├── AIReviewCard.jsx   # "✨ Generate AI Review" button + report
+│       │       ├── MetricChart.jsx
+│       │       ├── CheckRow.jsx
+│       │       └── ...
+│       └── ...
+│
+├── db/migrations/               # Raw SQL migrations (no Prisma)
+│   └── 001_initial.sql
+├── .env.example
+└── README.md
+```
+
+---
+
+## 🔌 API Endpoints
+
+### NLP Service (`apps/nlp` — FastAPI)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Service health + model metadata |
+| `POST` | `/classify` | Classify commit messages (ML + Groq fallback) |
+| `POST` | `/classify/single` | Classify one commit |
+| `POST` | `/classify/batch` | Classify each commit independently |
+| `POST` | `/explain` | **AI regression explanation (Groq)** |
+| `POST` | `/review` | **AI project health review (Groq)** |
+
+### Server API (`apps/server` — Express)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | — | Server health |
+| `GET` | `/auth/github` | — | GitHub OAuth redirect |
+| `GET` | `/auth/github/callback` | — | OAuth callback |
+| `GET` | `/api/repos` | Bearer | List repos |
+| `GET` | `/api/repos/:owner/:name/checks` | Bearer | Recent checks (30) |
+| `GET` | `/api/repos/:owner/:name/thresholds` | Bearer | Get threshold config |
+| `PUT` | `/api/repos/:owner/:name/thresholds` | Bearer | Update thresholds |
+| `GET` | `/api/repos/:owner/:name/ai-review` | Bearer | **AI health review report** |
+
+---
+
+## 🤖 AI Feature Details
+
+### Feature 1: Regression Explanation
+
+**Trigger:** Every time a DeployGuard check **fails** on a PR.
+
+**Data sent to Groq:**
+- Bundle delta (KB + %)
+- Added / removed npm packages
+- Commit messages
+- NLP cause label (from `/classify`)
+
+**Output:** GitHub-flavored Markdown appended to the PR comment under
+`### 🤖 DeployGuard AI Analysis`.
+
+**Guarantees:**
+- Always covers WHAT → WHY → HOW in 5 bullets max
+- Ends with a copy-pasteable fix command
+- Never invents package names
+- If Groq fails, the section is omitted (no placeholder)
+
+### Feature 2: Project Health Review
+
+**Trigger:** User clicks "✨ Generate AI Review" on the repo detail page.
+
+**Data aggregated from PostgreSQL:**
+- Total / passed / failed checks
+- Average bundle size + worst regression (KB)
+- Most common NLP cause
+- Recently added packages (deduplicated)
+
+**Output:** Three-section report with exact headers:
+- `✅ Strengths` (3 bullets)
+- `⚠️ Risks` (3 bullets)
+- `🔧 Recommendations` (3 bullets)
+
+**Safety:**
+- If pass rate < 70% → flagged as *critical* in Risks
+- If worst regression > 100 KB → flagged as *serious concern*
+- If Groq fails → shows `"AI review temporarily unavailable."`
+- The dashboard page **never breaks**
+
+---
+
+## 🧪 Running Tests
+
+```bash
+cd apps/server
+npm test
 ```
 
 ---

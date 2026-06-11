@@ -158,4 +158,87 @@ router.put('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
   }
 });
 
+/** GET /api/repos/:owner/:name/ai-review — AI project health review */
+router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
+  try {
+    const { pool } = require('../db');
+    const { rows } = await pool.query(
+      `SELECT id, name FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
+      [req.params.owner, req.params.name]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Repo not found' });
+
+    const repoId = rows[0].id;
+    const repoName = rows[0].name;
+
+    const [totalRes, passRes, failRes, avgRes, worstRes, causeRes, recentCauseRes] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1`, [repoId]),
+      pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1 AND status = 'pass'`, [repoId]),
+      pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1 AND status = 'fail'`, [repoId]),
+      pool.query(`SELECT COALESCE(AVG((results->'bundle_kb'->>'after')::numeric), 0) AS avg FROM checks WHERE repo_id = $1 AND results ? 'bundle_kb'`, [repoId]),
+      pool.query(`SELECT COALESCE(MAX(ABS(COALESCE((results->'bundle_kb'->>'after')::numeric, 0) - COALESCE((results->'bundle_kb'->>'before')::numeric, 0))), 0) AS max FROM checks WHERE repo_id = $1 AND results ? 'bundle_kb'`, [repoId]),
+      pool.query(`
+        SELECT rc.cause_type, COUNT(*) AS cnt
+        FROM regression_causes rc
+        JOIN checks c ON c.id = rc.check_id
+        WHERE c.repo_id = $1
+        GROUP BY rc.cause_type
+        ORDER BY cnt DESC
+        LIMIT 1
+      `, [repoId]),
+      pool.query(`
+        SELECT rc.detail
+        FROM checks c
+        JOIN regression_causes rc ON rc.check_id = c.id
+        WHERE c.repo_id = $1 AND rc.cause_type = 'new_dependency'
+        ORDER BY c.created_at DESC
+        LIMIT 5
+      `, [repoId]),
+    ]);
+
+    const totalChecks = totalRes.rows[0].count;
+    const passedChecks = passRes.rows[0].count;
+    const failedChecks = failRes.rows[0].count;
+    const avgBundleKB = parseFloat(avgRes.rows[0].avg) || 0;
+    const worstRegressionKB = parseFloat(worstRes.rows[0].max) || 0;
+    const mostCommonCause = causeRes.rows[0]?.cause_type || 'unknown';
+
+    const recentPackagesAdded = [];
+    for (const row of recentCauseRes.rows) {
+      const detail = row.detail || '';
+      const match = detail.match(/Added packages: (.+)/);
+      if (match) {
+        for (const pkg of match[1].split(', ')) {
+          const cleaned = pkg.trim();
+          if (cleaned && !recentPackagesAdded.includes(cleaned)) {
+            recentPackagesAdded.push(cleaned);
+          }
+        }
+      }
+    }
+
+    const axios = require('axios');
+    const NLP_URL = process.env.NLP_SERVICE_URL || 'http://localhost:8000';
+    const { data } = await axios.post(
+      `${NLP_URL}/review`,
+      {
+        repo_name: repoName,
+        total_checks: totalChecks,
+        passed_checks: passedChecks,
+        failed_checks: failedChecks,
+        avg_bundle_kb: avgBundleKB,
+        worst_regression_kb: worstRegressionKB,
+        most_common_cause: mostCommonCause,
+        recent_packages_added: recentPackagesAdded,
+      },
+      { timeout: 20_000 }
+    );
+
+    res.json({ report: data.report });
+  } catch (err) {
+    console.error('[ai-review] Error:', err.message);
+    res.json({ report: 'AI review temporarily unavailable.' });
+  }
+});
+
 module.exports = router;

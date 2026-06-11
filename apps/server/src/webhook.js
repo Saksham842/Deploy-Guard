@@ -4,6 +4,7 @@ const { analyseBundle } = require('./analysers/bundle');
 const { diffPackageJson } = require('./analysers/packageDiff');
 const { classifyCommits } = require('./nlp/client');
 const { buildComment, buildSummary } = require('./comment');
+const { getAIExplanation } = require('./utils/groqExplain');
 const {
   getOrCreateRepo,
   getBaseline,
@@ -106,13 +107,33 @@ async function handlePR({ octokit, payload }) {
       causes,
     });
 
-    // ── 10. Update baseline when merging to main (only on pass) ───────────────
+    // ── 10. AI explanation (failed checks only) ───────────────────────────────
+    let aiExplanation = null;
+    if (!passed) {
+      const bundleMetric = metrics.find(m => m.key === 'bundle_kb');
+      const bundleDeltaKB = bundleMetric && bundleMetric.before !== null
+        ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100
+        : 0;
+      const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
+      const nlpCauseLabel = causes.length > 0 ? causes[0].cause_type : 'unknown';
+
+      aiExplanation = await getAIExplanation({
+        bundleDeltaKB,
+        bundleDeltaPct,
+        addedPackages: pkgDiff.added || [],
+        removedPackages: pkgDiff.removed || [],
+        commitMessages: messages,
+        nlpCauseLabel,
+      });
+    }
+
+    // ── 11. Update baseline when merging to main (only on pass) ───────────────
     const isMainBranch = ['main', 'master'].includes(baseBranch);
     if (isMainBranch && passed) {
       await upsertBaseline(repo.id, baseBranch, 'bundle_kb', bundleResult.totalKb, headSha);
     }
 
-    // ── 11. Finalise check run on GitHub ─────────────────────────────────────
+    // ── 12. Finalise check run on GitHub ─────────────────────────────────────
     const summary = buildSummary(metrics, causes);
     await octokit.rest.checks.update({
       owner,
@@ -129,12 +150,12 @@ async function handlePR({ octokit, payload }) {
       },
     });
 
-    // ── 12. Post PR comment ────────────────────────────────────────────────────
+    // ── 13. Post PR comment ────────────────────────────────────────────────────
     await octokit.rest.issues.createComment({
       owner,
       repo: repoName,
       issue_number: prNumber,
-      body: buildComment(metrics, causes, pkgDiff),
+      body: buildComment(metrics, causes, pkgDiff, aiExplanation),
     });
 
   } catch (err) {

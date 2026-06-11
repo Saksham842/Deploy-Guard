@@ -24,4 +24,5 @@ export const api = {
   getThresholds:  (owner, name) => apiFetch(`/api/repos/${owner}/${name}/thresholds`),
   updateThresholds: (owner, name, body) =>
     apiFetch(`/api/repos/${owner}/${name}/thresholds`, { method: 'PUT', body: JSON.stringify(body) }),
+  getAiReview: (owner, name) => apiFetch(`/api/repos/${owner}/${name}/ai-review`),
 }

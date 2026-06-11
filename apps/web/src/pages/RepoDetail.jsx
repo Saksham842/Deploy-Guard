@@ -4,6 +4,7 @@ import { api } from '../api';
 import MetricChart from '../components/MetricChart';
 import CheckRow from '../components/CheckRow';
 import Badge from '../components/Badge';
+import AIReviewCard from '../components/AIReviewCard';
 
 // Details page for a specific repository, showing stats cards, trend charts, and recent checks list.
 export default function RepoDetail() {
@@ -125,6 +126,11 @@ export default function RepoDetail() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* AI Health Review */}
+      <div className="mt-6">
+        <AIReviewCard repoId={{ owner, name }} />
       </div>
     </div>
   );

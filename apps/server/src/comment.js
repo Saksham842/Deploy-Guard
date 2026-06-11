@@ -1,7 +1,7 @@
 /**
  * Build the markdown PR comment body for DeployGuard results.
  */
-function buildComment(metrics, causes, pkgDiff) {
+function buildComment(metrics, causes, pkgDiff, aiExplanation) {
   const allPassed = metrics.every(m => m.passed);
   const topEmoji  = allPassed ? '🟢' : '🔴';
 
@@ -50,6 +50,11 @@ function buildComment(metrics, causes, pkgDiff) {
     md += `### ⬆️ Packages upgraded\n`;
     pkgDiff.upgraded.forEach(p => { md += `- \`${p.name}\`: \`${p.from}\` → \`${p.to}\`\n`; });
     md += '\n';
+  }
+
+  // ── AI explanation ──────────────────────────────────────────────────────────
+  if (aiExplanation) {
+    md += `### 🤖 DeployGuard AI Analysis\n\n${aiExplanation}\n\n`;
   }
 
   // ── Footer ─────────────────────────────────────────────────────────────────
