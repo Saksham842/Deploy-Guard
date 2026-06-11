@@ -32,30 +32,31 @@ app.webhooks.on('pull_request.reopened',    handlePR);
 app.webhooks.on('installation.created',     handleInstallation);
 app.webhooks.on('installation_repositories.added', handleInstallation);
 
+// Fires when a GitHub Actions workflow run completes (e.g. Bundle Analysis).
+// This is what actually triggers the real bundle measurement after CI finishes.
+app.webhooks.on('workflow_run.completed',   handleWorkflowRun);
+
 app.webhooks.onError((error) => {
   console.error('[webhook] Error:', error);
 });
 
-// ─── Core handler ─────────────────────────────────────────────────────────────
+// ─── PR opened/synchronised handler ─────────────────────────────────────────
 async function handlePR({ octokit, payload }) {
   const { repository, pull_request, installation } = payload;
 
-  const owner    = repository.owner.login;
-  const repoName = repository.name;
-  const headSha  = pull_request.head.sha;
-  const baseSha  = pull_request.base.sha;
-  const prNumber = pull_request.number;
-  const baseBranch = pull_request.base.ref;
+  const owner      = repository.owner.login;
+  const repoName   = repository.name;
+  const headSha    = pull_request.head.sha;
+  const prNumber   = pull_request.number;
 
   console.log(`[webhook] PR #${prNumber} on ${owner}/${repoName} — head ${headSha.slice(0, 7)}`);
 
-  // ── 1. Upsert repo record ──────────────────────────────────────────────────
-  const repo = await getOrCreateRepo(
-    repository.id, owner, repoName, installation.id
-  );
-  const thresholds = await getThresholds(repo.id);
+  // Upsert repo record
+  const repo = await getOrCreateRepo(repository.id, owner, repoName, installation.id);
 
-  // ── 2. Post a pending check immediately so GitHub shows it in the UI ───────
+  // Post an in_progress check immediately so GitHub shows the pending indicator.
+  // We leave it in_progress here — the workflow_run handler will complete it
+  // once the Bundle Analysis CI job finishes and the artifact is available.
   const { data: checkRun } = await octokit.rest.checks.create({
     owner,
     repo: repoName,
@@ -64,63 +65,138 @@ async function handlePR({ octokit, payload }) {
     status: 'in_progress',
     started_at: new Date().toISOString(),
     output: {
-      title: '🔍 Analysing performance…',
-      summary: 'DeployGuard is measuring bundle size, query count, and API latency.',
+      title: '⏳ Waiting for Bundle Analysis CI…',
+      summary:
+        'DeployGuard is waiting for the Bundle Analysis workflow to complete. ' +
+        'Results will appear automatically once the artifact is uploaded.',
     },
   });
 
+  console.log(`[webhook] Check run #${checkRun.id} created — waiting for CI artifact`);
+}
+
+// ─── Workflow run completed handler ──────────────────────────────────────────
+// Fires when ANY workflow run on this repo completes.
+// We filter to only the "Bundle Analysis" workflow so we can grab real sizes.
+async function handleWorkflowRun({ octokit, payload }) {
+  const { workflow_run, repository, installation } = payload;
+
+  // Only care about our specific workflow
+  if (workflow_run.name !== 'Bundle Analysis') return;
+  if (workflow_run.conclusion !== 'success') {
+    console.warn(`[workflow_run] Bundle Analysis ended with conclusion=${workflow_run.conclusion} — skipping`);
+    return;
+  }
+
+  // workflow_run.pull_requests is populated by GitHub when the run was triggered by a PR
+  const prs = workflow_run.pull_requests || [];
+  if (prs.length === 0) {
+    console.log('[workflow_run] No associated PRs — skipping (push to main handled by baseline update)');
+    return;
+  }
+
+  const owner    = repository.owner.login;
+  const repoName = repository.name;
+  const headSha  = workflow_run.head_sha;
+
+  console.log(`[workflow_run] Bundle Analysis completed for ${owner}/${repoName} — head ${headSha.slice(0, 7)}`);
+
+  const repo       = await getOrCreateRepo(repository.id, owner, repoName, installation.id);
+  const thresholds = await getThresholds(repo.id);
+
+  for (const pr of prs) {
+    const prNumber   = pr.number;
+    const baseSha    = pr.base.sha;
+    const baseBranch = pr.base.ref;
+
+    console.log(`[workflow_run] Running analysis for PR #${prNumber}`);
+
+    // Find the in_progress DeployGuard check on this head SHA so we can update it
+    let checkRunId = null;
+    try {
+      const { data: checksData } = await octokit.rest.checks.listForRef({
+        owner, repo: repoName, ref: headSha, check_name: 'DeployGuard', per_page: 5,
+      });
+      const existing = checksData.check_runs.find(c => c.status !== 'completed');
+      checkRunId = existing?.id ?? null;
+    } catch { /* will create a new check below */ }
+
+    // If there's no existing in_progress check, create one
+    if (!checkRunId) {
+      try {
+        const { data: newCheck } = await octokit.rest.checks.create({
+          owner, repo: repoName, name: 'DeployGuard', head_sha: headSha,
+          status: 'in_progress', started_at: new Date().toISOString(),
+          output: { title: '🔍 Analysing bundle…', summary: 'Reading CI artifact…' },
+        });
+        checkRunId = newCheck.id;
+      } catch (e) {
+        console.error('[workflow_run] Could not create check run:', e.message);
+        return;
+      }
+    }
+
+    await runAnalysis({
+      octokit, owner, repoName,
+      headSha, baseSha, baseBranch,
+      prNumber, repo, thresholds, checkRunId,
+    });
+  }
+}
+
+// ─── Core analysis (shared by both handlers) ─────────────────────────────────
+async function runAnalysis({
+  octokit, owner, repoName,
+  headSha, baseSha, baseBranch,
+  prNumber, repo, thresholds, checkRunId,
+}) {
   try {
-    // ── 3. Fetch existing baselines ──────────────────────────────────────────
+    // ── 1. Fetch existing baselines ──────────────────────────────────────────
     const [bundleBaseline, queryBaseline, apiBaseline] = await Promise.all([
       getBaseline(repo.id, baseBranch, 'bundle_kb'),
       getBaseline(repo.id, baseBranch, 'query_count'),
       getBaseline(repo.id, baseBranch, 'api_p95_ms'),
     ]);
 
-    // ── 4. Analyse bundle (fetches CI artifact, falls back to mock) ──────────
-    const bundleResult = await analyseBundle(octokit, repository, headSha);
+    // ── 2. Analyse bundle (fetches CI artifact) ──────────────────────────────
+    const bundleResult = await analyseBundle(octokit, { owner: { login: owner }, name: repoName }, headSha);
 
-    // ── 5. Diff package.json between base → head ─────────────────────────────
-    const pkgDiff = await diffPackageJson(octokit, repository, baseSha, headSha);
+    // ── 3. Diff package.json ─────────────────────────────────────────────────
+    const pkgDiff = await diffPackageJson(
+      octokit, { owner: { login: owner }, name: repoName }, baseSha, headSha
+    );
 
-    // ── 6. Collect commit messages ────────────────────────────────────────────
+    // ── 4. Collect commit messages ────────────────────────────────────────────
     const { data: commitsData } = await octokit.rest.pulls.listCommits({
       owner, repo: repoName, pull_number: prNumber, per_page: 50,
     });
     const messages = commitsData.map(c => c.commit.message);
 
-    // ── 7. NLP classify ────────────────────────────────────────────────────────
+    // ── 5. NLP classify ───────────────────────────────────────────────────────
     const causes = await classifyCommits(messages, pkgDiff);
 
-    // ── 8. Compute deltas + thresholds ──────────────────────────────────────────
+    // ── 6. Compute metrics ───────────────────────────────────────────────────
     const metrics = computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds });
     const passed  = metrics.length > 0 ? metrics.every(m => m.passed) : true;
 
-    // ── 9. Save to DB ──────────────────────────────────────────────────────────
+    // ── 7. Save to DB ─────────────────────────────────────────────────────────
     await saveCheck({
-      repoId: repo.id,
-      prNumber,
-      headSha,
-      baseSha,
+      repoId: repo.id, prNumber, headSha, baseSha,
       status: passed ? 'pass' : 'fail',
       results: buildResultsJson(metrics),
       causes,
     });
 
-    // ── 10. AI explanation / summary ────────────────────────────────────────────
+    // ── 8. AI explanation / summary ───────────────────────────────────────────
     let aiExplanation = null;
-    const bundleMetric = metrics.find(m => m.key === 'bundle_kb');
-    const bundleDeltaKB = bundleMetric && bundleMetric.before !== null
-      ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100
-      : 0;
+    const bundleMetric  = metrics.find(m => m.key === 'bundle_kb');
+    const bundleDeltaKB  = bundleMetric && bundleMetric.before !== null
+      ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100 : 0;
     const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
 
-    // Always attempt AI — both on pass (summary) and fail (explanation).
-    // getAISummary / getAIExplanation each have their own silent fallback.
     if (passed) {
       aiExplanation = await getAISummary({
-        bundleDeltaKB,
-        bundleDeltaPct,
+        bundleDeltaKB, bundleDeltaPct,
         addedPackages: pkgDiff.added || [],
         removedPackages: pkgDiff.removed || [],
         commitMessages: messages,
@@ -128,8 +204,7 @@ async function handlePR({ octokit, payload }) {
     } else {
       const nlpCauseLabel = causes.length > 0 ? causes[0].cause_type : 'unknown';
       aiExplanation = await getAIExplanation({
-        bundleDeltaKB,
-        bundleDeltaPct,
+        bundleDeltaKB, bundleDeltaPct,
         addedPackages: pkgDiff.added || [],
         removedPackages: pkgDiff.removed || [],
         commitMessages: messages,
@@ -137,18 +212,16 @@ async function handlePR({ octokit, payload }) {
       });
     }
 
-    // ── 11. Update baseline when merging to main (only on pass) ───────────────
+    // ── 9. Update baseline on push to main ───────────────────────────────────
     const isMainBranch = ['main', 'master'].includes(baseBranch);
-    if (isMainBranch && passed) {
+    if (isMainBranch && passed && bundleResult.totalKb !== null) {
       await upsertBaseline(repo.id, baseBranch, 'bundle_kb', bundleResult.totalKb, headSha);
     }
 
-    // ── 12. Finalise check run on GitHub ─────────────────────────────────────
+    // ── 10. Finalise the check run ────────────────────────────────────────────
     const summary = buildSummary(metrics, causes);
     await octokit.rest.checks.update({
-      owner,
-      repo: repoName,
-      check_run_id: checkRun.id,
+      owner, repo: repoName, check_run_id: checkRunId,
       status: 'completed',
       conclusion: passed ? 'success' : 'failure',
       completed_at: new Date().toISOString(),
@@ -160,25 +233,18 @@ async function handlePR({ octokit, payload }) {
       },
     });
 
-    // ── 13. Post PR comment ────────────────────────────────────────────────────
+    // ── 11. Post PR comment ───────────────────────────────────────────────────
     await octokit.rest.issues.createComment({
-      owner,
-      repo: repoName,
-      issue_number: prNumber,
+      owner, repo: repoName, issue_number: prNumber,
       body: buildComment(metrics, causes, pkgDiff, aiExplanation),
     });
 
   } catch (err) {
-    console.error('[webhook] Handler error:', err);
-
-    // Always resolve the check — never leave a PR permanently in_progress
+    console.error('[runAnalysis] Error:', err);
     try {
       await octokit.rest.checks.update({
-        owner,
-        repo: repoName,
-        check_run_id: checkRun.id,
-        status: 'completed',
-        conclusion: 'neutral',
+        owner, repo: repoName, check_run_id: checkRunId,
+        status: 'completed', conclusion: 'neutral',
         completed_at: new Date().toISOString(),
         output: {
           title: '⚠️ DeployGuard encountered an error',
@@ -186,7 +252,7 @@ async function handlePR({ octokit, payload }) {
         },
       });
     } catch (updateErr) {
-      console.error('[webhook] Failed to update check run after error:', updateErr);
+      console.error('[runAnalysis] Failed to update check run after error:', updateErr);
     }
   }
 }
