@@ -4,7 +4,8 @@
  * Strategy:
  *   1. Look for a GitHub Actions artifact named "bundle-stats" on the head commit.
  *   2. Download it and parse webpack/vite stats.json to compute total bundle KB.
- *   3. Fall back to a mock 420 KB value during local development.
+ *   3. If no artifact is found, return { totalKb: null } so the webhook can
+ *      treat this PR as a "no bundle data" run instead of using a fake value.
  */
 
 const { Readable } = require('stream');
@@ -48,9 +49,10 @@ async function analyseBundle(octokit, repository, sha) {
     console.warn('[bundle] Could not fetch artifact:', err.message);
   }
 
-  // ── Fallback (dev mode / no CI artifact) ──────────────────────────────────
-  console.log('[bundle] Using mock bundle data (420 KB)');
-  return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+  // ── No CI artifact found ───────────────────────────────────────────────────
+  // Return null so the caller can show "no data" instead of a fake number.
+  console.log('[bundle] No bundle-stats artifact found — returning null (no data).');
+  return { totalKb: null, chunks: [], source: 'no-artifact' };
 }
 
 /**
@@ -74,14 +76,14 @@ async function parseStatsJson(buffer) {
       Object.values(zip.files).find(f => !f.dir && f.name.endsWith('stats.json'))
     );
     if (!statsFile) {
-      console.warn('[bundle] stats.json not found inside artifact ZIP, using mock');
-      return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+      console.warn('[bundle] stats.json not found inside artifact ZIP');
+      return { totalKb: null, chunks: [], source: 'no-stats-json' };
     }
     const content = await statsFile.async('string');
     return extractStats(JSON.parse(content));
   } catch (err) {
-    console.warn('[bundle] Failed to extract bundle stats from ZIP:', err.message, 'using mock');
-    return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+    console.warn('[bundle] Failed to extract bundle stats from ZIP:', err.message);
+    return { totalKb: null, chunks: [], source: 'parse-error' };
   }
 }
 
@@ -94,8 +96,8 @@ function extractStats(json) {
   const totalBytes = assets.reduce((acc, a) => acc + (a.size || a.gzipSize || 0), 0);
 
   if (totalBytes === 0) {
-    console.warn('[bundle] Stats JSON has zero total bytes, using mock');
-    return { totalKb: 420, chunks: [{ name: 'main.js', kb: 420 }] };
+    console.warn('[bundle] Stats JSON has zero total bytes — no meaningful data');
+    return { totalKb: null, chunks: [], source: 'zero-bytes' };
   }
 
   return {

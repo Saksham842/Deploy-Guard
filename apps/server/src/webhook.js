@@ -92,9 +92,9 @@ async function handlePR({ octokit, payload }) {
     // ── 7. NLP classify ────────────────────────────────────────────────────────
     const causes = await classifyCommits(messages, pkgDiff);
 
-    // ── 8. Compute deltas + thresholds ────────────────────────────────────────
+    // ── 8. Compute deltas + thresholds ──────────────────────────────────────────
     const metrics = computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds });
-    const passed  = metrics.every(m => m.passed);
+    const passed  = metrics.length > 0 ? metrics.every(m => m.passed) : true;
 
     // ── 9. Save to DB ──────────────────────────────────────────────────────────
     await saveCheck({
@@ -107,7 +107,7 @@ async function handlePR({ octokit, payload }) {
       causes,
     });
 
-    // ── 10. AI explanation / summary ──────────────────────────────────────────
+    // ── 10. AI explanation / summary ────────────────────────────────────────────
     let aiExplanation = null;
     const bundleMetric = metrics.find(m => m.key === 'bundle_kb');
     const bundleDeltaKB = bundleMetric && bundleMetric.before !== null
@@ -115,6 +115,8 @@ async function handlePR({ octokit, payload }) {
       : 0;
     const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
 
+    // Always attempt AI — both on pass (summary) and fail (explanation).
+    // getAISummary / getAIExplanation each have their own silent fallback.
     if (passed) {
       aiExplanation = await getAISummary({
         bundleDeltaKB,
@@ -212,22 +214,27 @@ async function handleInstallation({ payload }) {
 function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds }) {
   const metrics = [];
 
-  // Bundle KB
-  const bundleBefore = bundleBaseline?.value ?? null;
-  const bundleAfter  = bundleResult.totalKb;
-  const bundleDelta  = bundleBefore
-    ? ((bundleAfter - bundleBefore) / bundleBefore) * 100
-    : 0;
-  metrics.push({
-    key:     'bundle_kb',
-    label:   'Bundle Size',
-    before:  bundleBefore,
-    after:   bundleAfter,
-    delta:   bundleDelta,
-    unit:    'KB',
-    threshold: thresholds.bundle_kb,
-    passed:  Math.abs(bundleDelta) <= thresholds.bundle_kb || bundleBefore === null,
-  });
+  // Bundle KB — only if CI artifact was present
+  if (bundleResult.totalKb !== null) {
+    const bundleBefore = bundleBaseline?.value ?? null;
+    const bundleAfter  = bundleResult.totalKb;
+    const bundleDelta  = bundleBefore
+      ? ((bundleAfter - bundleBefore) / bundleBefore) * 100
+      : 0;
+    metrics.push({
+      key:     'bundle_kb',
+      label:   'Bundle Size',
+      before:  bundleBefore,
+      after:   bundleAfter,
+      delta:   bundleDelta,
+      unit:    'KB',
+      threshold: thresholds.bundle_kb,
+      passed:  Math.abs(bundleDelta) <= thresholds.bundle_kb || bundleBefore === null,
+    });
+  } else {
+    // No artifact — log and skip (no fake data)
+    console.log('[webhook] Bundle size unavailable (no CI artifact) — skipping bundle metric');
+  }
 
   // Query count — only if baseline exists
   if (queryBaseline) {

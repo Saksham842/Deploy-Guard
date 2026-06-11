@@ -1,0 +1,80 @@
+name: Bundle Analysis
+
+# ── Triggers ───────────────────────────────────────────────────────────────────
+# Runs on every PR (any branch → any branch) so DeployGuard always gets real sizes.
+# Also runs on pushes to main/master so the baseline is kept up to date.
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+
+# ── Permissions ────────────────────────────────────────────────────────────────
+permissions:
+  contents: read      # read source code
+  actions:  write     # upload artifacts
+
+jobs:
+  bundle:
+    name: Measure Bundle Size
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js setup ───────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'apps/web/package.json'
+
+      # ── 3. Install web app dependencies ────────────────────────────────────
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm install
+
+      # ── 4. Build the Vite app ───────────────────────────────────────────────
+      - name: Build
+        working-directory: apps/web
+        run: npm run build
+        env:
+          # Silence interactive prompts & speed up CI
+          CI: true
+
+      # ── 5. Generate stats.json from dist/ ──────────────────────────────────
+      #     This script scans dist/assets and writes a webpack-compatible
+      #     stats.json that DeployGuard's bundle analyser can parse.
+      - name: Generate bundle stats
+        working-directory: apps/web
+        run: node scripts/generate-stats.mjs
+
+      # ── 6. Upload as a GitHub Actions artifact ─────────────────────────────
+      #     DeployGuard looks for an artifact named exactly "bundle-stats"
+      #     containing "stats.json" on the head commit of every PR.
+      - name: Upload bundle-stats artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: apps/web/dist/stats.json
+          retention-days: 7      # keep for a week; enough for any PR review
+
+      # ── 7. Print a quick summary to the Actions log ────────────────────────
+      - name: Print bundle summary
+        working-directory: apps/web
+        run: |
+          echo "### Bundle size summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          node -e "
+            const s = JSON.parse(require('fs').readFileSync('dist/stats.json','utf8'));
+            const total = s.assets.reduce((t,a)=>t+a.size,0);
+            console.log('Total: ' + (total/1024).toFixed(1) + ' KB');
+            s.assets.sort((a,b)=>b.size-a.size).slice(0,10).forEach(a=>
+              console.log('  ' + (a.size/1024).toFixed(1).padStart(7) + ' KB  ' + a.name)
+            );
+          " >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

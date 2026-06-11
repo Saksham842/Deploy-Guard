@@ -11,6 +11,10 @@ function buildComment(metrics, causes, pkgDiff, aiExplanation) {
   md += `| Metric | Before | After | Delta | Status |\n`;
   md += `|--------|--------|-------|-------|--------|\n`;
 
+  if (metrics.length === 0) {
+    md += `| Bundle Size | — | — | n/a | ⚫ No CI artifact — add a bundle-stats upload step to your workflow |\n`;
+  }
+
   for (const m of metrics) {
     const before  = m.before !== null ? `${m.before} ${m.unit}` : '—';
     const after   = m.after  !== null ? `${m.after} ${m.unit}`  : '—';
@@ -60,7 +64,9 @@ function buildComment(metrics, causes, pkgDiff, aiExplanation) {
   // ── Footer ─────────────────────────────────────────────────────────────────
   md += `---\n`;
   md += `*[DeployGuard](${process.env.DASHBOARD_URL || 'https://deploy-guard-web.vercel.app'}) — `;
-  md += `Threshold: bundle ±${metrics[0]?.threshold ?? 10}% | `;
+  if (metrics.length > 0) {
+    md += `Threshold: bundle ±${metrics[0]?.threshold ?? 10}% | `;
+  }
   md += `Powered by NLP causation engine*`;
 
   return md;
