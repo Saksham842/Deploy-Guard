@@ -4,7 +4,7 @@ const { analyseBundle } = require('./analysers/bundle');
 const { diffPackageJson } = require('./analysers/packageDiff');
 const { classifyCommits } = require('./nlp/client');
 const { buildComment, buildSummary } = require('./comment');
-const { getAIExplanation } = require('./utils/groqExplain');
+const { getAIExplanation, getAISummary } = require('./utils/groqExplain');
 const {
   getOrCreateRepo,
   getBaseline,
@@ -107,16 +107,24 @@ async function handlePR({ octokit, payload }) {
       causes,
     });
 
-    // ── 10. AI explanation (failed checks only) ───────────────────────────────
+    // ── 10. AI explanation / summary ──────────────────────────────────────────
     let aiExplanation = null;
-    if (!passed) {
-      const bundleMetric = metrics.find(m => m.key === 'bundle_kb');
-      const bundleDeltaKB = bundleMetric && bundleMetric.before !== null
-        ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100
-        : 0;
-      const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
-      const nlpCauseLabel = causes.length > 0 ? causes[0].cause_type : 'unknown';
+    const bundleMetric = metrics.find(m => m.key === 'bundle_kb');
+    const bundleDeltaKB = bundleMetric && bundleMetric.before !== null
+      ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100
+      : 0;
+    const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
 
+    if (passed) {
+      aiExplanation = await getAISummary({
+        bundleDeltaKB,
+        bundleDeltaPct,
+        addedPackages: pkgDiff.added || [],
+        removedPackages: pkgDiff.removed || [],
+        commitMessages: messages,
+      });
+    } else {
+      const nlpCauseLabel = causes.length > 0 ? causes[0].cause_type : 'unknown';
       aiExplanation = await getAIExplanation({
         bundleDeltaKB,
         bundleDeltaPct,

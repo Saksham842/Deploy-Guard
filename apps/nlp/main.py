@@ -21,7 +21,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from ai_features import explain_regression, review_repo
+from ai_features import explain_regression, review_repo, summarize_pass
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("deployguard-nlp")
@@ -455,6 +455,18 @@ async def explain(req: ExplainRequest):
         nlp_cause=req.nlp_cause,
     )
     return {"explanation": explanation}
+
+
+@app.post("/summarize")
+async def summarize(req: ExplainRequest):
+    summary = await summarize_pass(
+        bundle_delta_kb=req.bundle_delta_kb,
+        bundle_delta_pct=req.bundle_delta_pct,
+        added_packages=req.added_packages,
+        removed_packages=req.removed_packages,
+        commit_messages=req.commit_messages,
+    )
+    return {"summary": summary}
 
 
 @app.post("/review")

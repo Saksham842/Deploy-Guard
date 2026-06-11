@@ -38,6 +38,15 @@ _REVIEW_SYSTEM_PROMPT = (
 )
 
 
+_SUMMARY_SYSTEM_PROMPT = (
+    "You are DeployGuard AI, a performance regression analyst for GitHub pull "
+    "requests. The latest check PASSED — all metrics are within thresholds. "
+    "Write a brief, positive summary (2-3 bullet points) confirming what's "
+    "healthy. Mention the actual numbers from the data. "
+    "Keep it concise and encouraging. Use GitHub Markdown formatting."
+)
+
+
 # ── Feature 1: AI Regression Explanation ───────────────────────────────────────
 
 async def explain_regression(
@@ -66,6 +75,33 @@ async def explain_regression(
         temperature=0.3, max_tokens=600,
     )
     return result if result is not None else "_AI explanation was not available at this time._"
+
+
+# ── Feature 1b: AI Pass Summary ────────────────────────────────────────────────
+
+async def summarize_pass(
+    bundle_delta_kb: float,
+    bundle_delta_pct: float,
+    added_packages: list[str],
+    removed_packages: list[str],
+    commit_messages: list[str],
+) -> str:
+    """Short positive summary when all checks pass."""
+
+    user_prompt = (
+        f"Check passed — all metrics within thresholds:\n"
+        f"- Bundle delta: {bundle_delta_kb} KB ({bundle_delta_pct}%)\n"
+        f"- Added packages: {_fmt_list(added_packages)}\n"
+        f"- Removed packages: {_fmt_list(removed_packages)}\n"
+        f"- Commit messages: {_fmt_commits(commit_messages)}\n\n"
+        "Write a brief positive summary confirming all good."
+    )
+
+    result = await call_groq(
+        _SUMMARY_SYSTEM_PROMPT, user_prompt,
+        temperature=0.3, max_tokens=300,
+    )
+    return result if result is not None else "_AI summary was not available at this time._"
 
 
 # ── Feature 2: AI Project Health Review ────────────────────────────────────────
