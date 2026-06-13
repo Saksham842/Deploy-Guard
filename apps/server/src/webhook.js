@@ -1,8 +1,19 @@
+/**
+ * webhook.js — GitHub App event hub
+ *
+ * Receives signed webhook payloads from GitHub and orchestrates the full
+ * DeployGuard analysis pipeline:
+ *
+ *   pull_request.*         → creates a pending Check Run on the head commit
+ *   workflow_run.completed → downloads the CI artifact, runs analysis, posts results
+ *   installation.*         → registers newly connected repositories in the database
+ */
+
 const { App, createNodeMiddleware } = require('@octokit/app');
-const { Octokit } = require('@octokit/rest');
-const { analyseBundle } = require('./analysers/bundle');
-const { diffPackageJson } = require('./analysers/packageDiff');
-const { classifyCommits } = require('./nlp/client');
+const { Octokit }                   = require('@octokit/rest');
+const { analyseBundle }             = require('./analysers/bundle');
+const { diffPackageJson }           = require('./analysers/packageDiff');
+const { classifyCommits }           = require('./nlp/client');
 const { buildComment, buildSummary } = require('./comment');
 const { getAIExplanation, getAISummary } = require('./utils/groqExplain');
 const {
@@ -13,151 +24,154 @@ const {
   getThresholds,
 } = require('./db');
 
-// ─── GitHub App initialisation ────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// GitHub App — private key is stored base64-encoded in the environment to
+// avoid newline handling issues across different deployment platforms.
+// ---------------------------------------------------------------------------
 const app = new App({
-  appId: process.env.GITHUB_APP_ID,
+  appId:    process.env.GITHUB_APP_ID,
   privateKey: Buffer.from(process.env.GITHUB_PRIVATE_KEY || '', 'base64').toString('utf8'),
   webhooks: { secret: process.env.GITHUB_WEBHOOK_SECRET },
   oauth: {
-    clientId: process.env.GITHUB_CLIENT_ID,
+    clientId:     process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
   },
   Octokit,
 });
 
-// ─── Event subscriptions ──────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Event subscriptions
+// ---------------------------------------------------------------------------
 app.webhooks.on('pull_request.opened',      handlePR);
 app.webhooks.on('pull_request.synchronize', handlePR);
 app.webhooks.on('pull_request.reopened',    handlePR);
-app.webhooks.on('installation.created',     handleInstallation);
-app.webhooks.on('installation_repositories.added', handleInstallation);
-
-// Fires when a GitHub Actions workflow run completes (e.g. Bundle Analysis).
-// This is what actually triggers the real bundle measurement after CI finishes.
-app.webhooks.on('workflow_run.completed',   handleWorkflowRun);
+app.webhooks.on('installation.created',                handleInstallation);
+app.webhooks.on('installation_repositories.added',     handleInstallation);
+app.webhooks.on('workflow_run.completed',              handleWorkflowRun);
 
 app.webhooks.onError((error) => {
-  console.error('[webhook] Error:', error);
+  console.error('[webhook] Unhandled error:', error.message);
 });
 
-// ─── PR opened/synchronised handler ─────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// handlePR — fired on PR open / push / reopen
+//
+// Creates an in_progress Check Run immediately so GitHub shows the pending
+// indicator. The run is completed later by handleWorkflowRun once the
+// Bundle Analysis CI job finishes and its artifact is available.
+// ---------------------------------------------------------------------------
 async function handlePR({ octokit, payload }) {
   const { repository, pull_request, installation } = payload;
 
-  const owner      = repository.owner.login;
-  const repoName   = repository.name;
-  const headSha    = pull_request.head.sha;
-  const prNumber   = pull_request.number;
+  const owner    = repository.owner.login;
+  const repoName = repository.name;
+  const headSha  = pull_request.head.sha;
+  const prNumber = pull_request.number;
 
-  console.log(`[webhook] PR #${prNumber} on ${owner}/${repoName} — head ${headSha.slice(0, 7)}`);
+  console.log(`[webhook] PR #${prNumber} opened on ${owner}/${repoName} (${headSha.slice(0, 7)})`);
 
-  // Upsert repo record
-  const repo = await getOrCreateRepo(repository.id, owner, repoName, installation.id);
+  await getOrCreateRepo(repository.id, owner, repoName, installation.id);
 
-  // Post an in_progress check immediately so GitHub shows the pending indicator.
-  // We leave it in_progress here — the workflow_run handler will complete it
-  // once the Bundle Analysis CI job finishes and the artifact is available.
   const { data: checkRun } = await octokit.rest.checks.create({
     owner,
-    repo: repoName,
-    name: 'DeployGuard',
-    head_sha: headSha,
-    status: 'in_progress',
+    repo:       repoName,
+    name:       'DeployGuard',
+    head_sha:   headSha,
+    status:     'in_progress',
     started_at: new Date().toISOString(),
     output: {
-      title: '⏳ Waiting for Bundle Analysis CI…',
-      summary:
-        'DeployGuard is waiting for the Bundle Analysis workflow to complete. ' +
-        'Results will appear automatically once the artifact is uploaded.',
+      title:   '⏳ Waiting for Bundle Analysis CI…',
+      summary: 'DeployGuard will post results automatically once the bundle stats artifact is uploaded.',
     },
   });
 
-  console.log(`[webhook] Check run #${checkRun.id} created — waiting for CI artifact`);
+  console.log(`[webhook] Check run #${checkRun.id} created`);
 }
 
-// ─── Workflow run completed handler ──────────────────────────────────────────
-// Fires when ANY workflow run on this repo completes.
-// We filter to only the "Bundle Analysis" workflow so we can grab real sizes.
+// ---------------------------------------------------------------------------
+// handleWorkflowRun — fired when any Actions workflow on this repo completes
+//
+// Filtered to only the two workflow names DeployGuard cares about:
+//   - "Bundle Analysis"        (DeployGuard's own repo)
+//   - "DeployGuard Bundle Stats" (tenant onboarding template)
+//
+// Fork PR handling: GitHub omits pull_requests[] for cross-fork runs as a
+// security measure. When the list is empty we fall back to the REST API and
+// match open PRs by head SHA.
+// ---------------------------------------------------------------------------
 async function handleWorkflowRun({ octokit, payload }) {
   const { workflow_run, repository, installation } = payload;
 
-  // Only care about our specific workflows (local development or tenant onboarding names)
   const allowedWorkflows = ['Bundle Analysis', 'DeployGuard Bundle Stats'];
   if (!allowedWorkflows.includes(workflow_run.name)) return;
 
   if (workflow_run.conclusion !== 'success') {
-    console.warn(`[workflow_run] Workflow '${workflow_run.name}' ended with conclusion=${workflow_run.conclusion} — skipping`);
+    console.warn(`[workflow_run] "${workflow_run.name}" ended with ${workflow_run.conclusion} — skipping`);
     return;
   }
-
-  // workflow_run.pull_requests is populated by GitHub when the run was triggered by a PR.
-  // NOTE: this is empty for fork PRs — we handle that below after we have octokit context.
-  let prs = workflow_run.pull_requests || [];
 
   const owner    = repository.owner.login;
   const repoName = repository.name;
   const headSha  = workflow_run.head_sha;
 
-  console.log(`[workflow_run] Bundle Analysis completed for ${owner}/${repoName} — head ${headSha.slice(0, 7)}`);
+  console.log(`[workflow_run] Bundle Analysis completed for ${owner}/${repoName} (${headSha.slice(0, 7)})`);
 
-  // installation may be absent on some workflow_run events — use optional chaining
+  // installation may be absent on some workflow_run payloads
   const installId = installation?.id ?? workflow_run.installation?.id ?? null;
   const repo       = await getOrCreateRepo(repository.id, owner, repoName, installId);
   const thresholds = await getThresholds(repo.id);
 
-  // ── Fork PR fallback ─────────────────────────────────────────────────────────
-  // GitHub does NOT populate workflow_run.pull_requests for cross-fork PRs.
-  // When the list is empty, query the GitHub API directly for open PRs
-  // whose head SHA matches the workflow run.
+  let prs = workflow_run.pull_requests || [];
+
+  // Fork PR fallback — query open PRs by head SHA when the payload list is empty
   if (prs.length === 0) {
     try {
       const { data: openPRs } = await octokit.rest.pulls.list({
         owner, repo: repoName, state: 'open', per_page: 10,
       });
+
       const matching = openPRs.filter(pr => pr.head.sha === headSha);
+
       if (matching.length === 0) {
-        const isMainBranch = ['main', 'master'].includes(workflow_run.head_branch);
-        if (isMainBranch) {
-          console.log(`[workflow_run] Direct push/merge to branch '${workflow_run.head_branch}' detected — updating baseline`);
+        // No open PR — could be a direct push to main/master; update the baseline
+        if (['main', 'master'].includes(workflow_run.head_branch)) {
+          console.log(`[workflow_run] Direct push to ${workflow_run.head_branch} — updating baseline`);
           const bundleResult = await analyseBundle(octokit, { owner: { login: owner }, name: repoName }, headSha);
           if (bundleResult.totalKb !== null) {
             await upsertBaseline(repo.id, workflow_run.head_branch, 'bundle_kb', bundleResult.totalKb, headSha);
-            console.log(`[workflow_run] Baseline updated to ${bundleResult.totalKb} KB for branch '${workflow_run.head_branch}'`);
+            console.log(`[workflow_run] Baseline → ${bundleResult.totalKb} KB on ${workflow_run.head_branch}`);
           }
         } else {
-          console.log('[workflow_run] No open PRs match head SHA — skipping');
+          console.log('[workflow_run] No matching open PRs — skipping');
         }
         return;
       }
+
       prs = matching.map(pr => ({
         number: pr.number,
         base:   { sha: pr.base.sha, ref: pr.base.ref },
       }));
-      console.log(`[workflow_run] Fork-PR fallback: found ${prs.length} matching PR(s) via API`);
+      console.log(`[workflow_run] Fork-PR fallback: matched ${prs.length} PR(s)`);
     } catch (err) {
-      console.warn('[workflow_run] Fork-PR fallback query failed:', err.message);
+      console.warn('[workflow_run] Fork-PR fallback failed:', err.message);
       return;
     }
   }
 
   for (const pr of prs) {
-    const prNumber   = pr.number;
-    const baseSha    = pr.base.sha;
-    const baseBranch = pr.base.ref;
+    const { number: prNumber, base: { sha: baseSha, ref: baseBranch } } = pr;
 
-    console.log(`[workflow_run] Running analysis for PR #${prNumber}`);
+    console.log(`[workflow_run] Analysing PR #${prNumber}`);
 
-    // Find the in_progress DeployGuard check on this head SHA so we can update it
+    // Locate the pending DeployGuard check to update, or create a new one
     let checkRunId = null;
     try {
-      const { data: checksData } = await octokit.rest.checks.listForRef({
+      const { data } = await octokit.rest.checks.listForRef({
         owner, repo: repoName, ref: headSha, check_name: 'DeployGuard', per_page: 5,
       });
-      const existing = checksData.check_runs.find(c => c.status !== 'completed');
-      checkRunId = existing?.id ?? null;
-    } catch { /* will create a new check below */ }
+      checkRunId = data.check_runs.find(c => c.status !== 'completed')?.id ?? null;
+    } catch { /* will create a fresh check below */ }
 
-    // If there's no existing in_progress check, create one
     if (!checkRunId) {
       try {
         const { data: newCheck } = await octokit.rest.checks.create({
@@ -167,36 +181,39 @@ async function handleWorkflowRun({ octokit, payload }) {
         });
         checkRunId = newCheck.id;
       } catch (e) {
-        console.error('[workflow_run] Could not create check run:', e.message);
+        console.error('[workflow_run] Failed to create check run:', e.message);
         return;
       }
     }
 
-    await runAnalysis({
-      octokit, owner, repoName,
-      headSha, baseSha, baseBranch,
-      prNumber, repo, thresholds, checkRunId,
-    });
+    await runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId });
   }
 }
 
-// ─── Core analysis (shared by both handlers) ─────────────────────────────────
-async function runAnalysis({
-  octokit, owner, repoName,
-  headSha, baseSha, baseBranch,
-  prNumber, repo, thresholds, checkRunId,
-}) {
+// ---------------------------------------------------------------------------
+// runAnalysis — the core pipeline, shared by both event handlers
+//
+// 1. Fetch baselines from DB (with main/master fallback for new branches)
+// 2. Download and parse the bundle-stats CI artifact
+// 3. Diff package.json between base and head
+// 4. Classify commit messages via the NLP pipeline
+// 5. Compute metrics and pass/fail status
+// 6. Persist check result to DB
+// 7. Get an AI-generated explanation (via NLP service → Groq direct fallback)
+// 8. Update the GitHub Check Run and post a PR comment
+// ---------------------------------------------------------------------------
+async function runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId }) {
   try {
-    // ── 1. Fetch existing baselines ──────────────────────────────────────────
     let [bundleBaseline, queryBaseline, apiBaseline] = await Promise.all([
       getBaseline(repo.id, baseBranch, 'bundle_kb'),
       getBaseline(repo.id, baseBranch, 'query_count'),
       getBaseline(repo.id, baseBranch, 'api_p95_ms'),
     ]);
 
-    // Fallback to main/master branch baseline if target branch has no baseline
+    // If the target branch has no recorded baseline, fall back to main/master.
+    // This prevents n/a results on feature branches that diverged from main.
     if (!bundleBaseline && !['main', 'master'].includes(baseBranch)) {
-      const mainBaseline = await getBaseline(repo.id, 'main', 'bundle_kb');
+      const mainBaseline  = await getBaseline(repo.id, 'main', 'bundle_kb');
       const fallbackBranch = mainBaseline ? 'main' : 'master';
       const [fBundle, fQuery, fApi] = await Promise.all([
         getBaseline(repo.id, fallbackBranch, 'bundle_kb'),
@@ -204,199 +221,150 @@ async function runAnalysis({
         getBaseline(repo.id, fallbackBranch, 'api_p95_ms'),
       ]);
       if (fBundle) {
-        console.log(`[runAnalysis] Using fallback baseline from '${fallbackBranch}' for branch '${baseBranch}'`);
+        console.log(`[analysis] No baseline for "${baseBranch}" — using "${fallbackBranch}" fallback`);
         bundleBaseline = fBundle;
-        queryBaseline = fQuery;
-        apiBaseline = fApi;
+        queryBaseline  = fQuery;
+        apiBaseline    = fApi;
       }
     }
 
-    // ── 2. Analyse bundle (fetches CI artifact) ──────────────────────────────
     const bundleResult = await analyseBundle(octokit, { owner: { login: owner }, name: repoName }, headSha);
+    const pkgDiff      = await diffPackageJson(octokit, { owner: { login: owner }, name: repoName }, baseSha, headSha);
 
-    // ── 3. Diff package.json ─────────────────────────────────────────────────
-    const pkgDiff = await diffPackageJson(
-      octokit, { owner: { login: owner }, name: repoName }, baseSha, headSha
-    );
-
-    // ── 4. Collect commit messages ────────────────────────────────────────────
     const { data: commitsData } = await octokit.rest.pulls.listCommits({
       owner, repo: repoName, pull_number: prNumber, per_page: 50,
     });
     const messages = commitsData.map(c => c.commit.message);
 
-    // ── 5. NLP classify ───────────────────────────────────────────────────────
-    const causes = await classifyCommits(messages, pkgDiff);
-
-    // ── 6. Compute metrics ───────────────────────────────────────────────────
+    const causes  = await classifyCommits(messages, pkgDiff);
     const metrics = computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds });
     const passed  = metrics.length > 0 ? metrics.every(m => m.passed) : true;
 
-    // ── 7. Save to DB ─────────────────────────────────────────────────────────
     await saveCheck({
       repoId: repo.id, prNumber, headSha, baseSha,
-      status: passed ? 'pass' : 'fail',
+      status:  passed ? 'pass' : 'fail',
       results: buildResultsJson(metrics),
       causes,
     });
 
-    // ── 8. AI explanation / summary ───────────────────────────────────────────
-    let aiExplanation = null;
-    const bundleMetric  = metrics.find(m => m.key === 'bundle_kb');
-    const bundleDeltaKB  = bundleMetric && bundleMetric.before !== null
-      ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100 : 0;
+    // AI explanation — passes through NLP service with direct Groq fallback
+    const bundleMetric   = metrics.find(m => m.key === 'bundle_kb');
+    const bundleDeltaKB  = bundleMetric?.before !== null ? Math.round((bundleMetric.after - bundleMetric.before) * 100) / 100 : 0;
     const bundleDeltaPct = bundleMetric ? Math.round(bundleMetric.delta * 100) / 100 : 0;
 
-    if (passed) {
-      aiExplanation = await getAISummary({
-        bundleDeltaKB, bundleDeltaPct,
-        addedPackages: pkgDiff.added || [],
-        removedPackages: pkgDiff.removed || [],
-        commitMessages: messages,
-      });
-    } else {
-      const nlpCauseLabel = causes.length > 0 ? causes[0].cause_type : 'unknown';
-      aiExplanation = await getAIExplanation({
-        bundleDeltaKB, bundleDeltaPct,
-        addedPackages: pkgDiff.added || [],
-        removedPackages: pkgDiff.removed || [],
-        commitMessages: messages,
-        nlpCauseLabel,
-      });
-    }
+    const aiExplanation = passed
+      ? await getAISummary({ bundleDeltaKB, bundleDeltaPct, addedPackages: pkgDiff.added || [], removedPackages: pkgDiff.removed || [], commitMessages: messages })
+      : await getAIExplanation({ bundleDeltaKB, bundleDeltaPct, addedPackages: pkgDiff.added || [], removedPackages: pkgDiff.removed || [], commitMessages: messages, nlpCauseLabel: causes[0]?.cause_type ?? 'unknown' });
 
-    // ── 9. Update baseline on push to main ───────────────────────────────────
-    const isMainBranch = ['main', 'master'].includes(baseBranch);
-    if (isMainBranch && passed && bundleResult.totalKb !== null) {
+    // Keep the baseline fresh when a passing change lands on the default branch
+    if (['main', 'master'].includes(baseBranch) && passed && bundleResult.totalKb !== null) {
       await upsertBaseline(repo.id, baseBranch, 'bundle_kb', bundleResult.totalKb, headSha);
     }
 
-    // ── 10. Finalise the check run ────────────────────────────────────────────
-    const summary = buildSummary(metrics, causes);
     await octokit.rest.checks.update({
       owner, repo: repoName, check_run_id: checkRunId,
-      status: 'completed',
-      conclusion: passed ? 'success' : 'failure',
+      status:       'completed',
+      conclusion:   passed ? 'success' : 'failure',
       completed_at: new Date().toISOString(),
       output: {
-        title: passed
+        title:   passed
           ? '✅ No performance regressions detected'
-          : `⚠️ Regression detected — ${metrics.filter(m => !m.passed).map(m => m.label).join(', ')}`,
-        summary,
+          : `⚠️ Regression — ${metrics.filter(m => !m.passed).map(m => m.label).join(', ')}`,
+        summary: buildSummary(metrics, causes),
       },
     });
 
-    // ── 11. Post PR comment ───────────────────────────────────────────────────
     await octokit.rest.issues.createComment({
       owner, repo: repoName, issue_number: prNumber,
       body: buildComment(metrics, causes, pkgDiff, aiExplanation),
     });
 
   } catch (err) {
-    console.error('[runAnalysis] Error:', err);
+    console.error('[analysis] Pipeline error:', err.message);
     try {
       await octokit.rest.checks.update({
         owner, repo: repoName, check_run_id: checkRunId,
         status: 'completed', conclusion: 'neutral',
         completed_at: new Date().toISOString(),
         output: {
-          title: '⚠️ DeployGuard encountered an error',
+          title:   '⚠️ DeployGuard encountered an error',
           summary: `\`\`\`\n${err.message}\n\`\`\``,
         },
       });
     } catch (updateErr) {
-      console.error('[runAnalysis] Failed to update check run after error:', updateErr);
+      console.error('[analysis] Failed to update check run after error:', updateErr.message);
     }
   }
 }
 
-// ─── Installation handler ─────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// handleInstallation — registers repos when the GitHub App is installed
+// ---------------------------------------------------------------------------
 async function handleInstallation({ payload }) {
   const { installation, repositories, repositories_added } = payload;
-  const reposToProcess = repositories || repositories_added || [];
-  
-  console.log(`[webhook] Installation event: syncing ${reposToProcess.length} repos`);
-  
-  for (const repo of reposToProcess) {
-    const owner = installation.account.login;
-    const name = repo.name;
+  const repos = repositories || repositories_added || [];
+
+  console.log(`[webhook] Installation: syncing ${repos.length} repo(s) for ${installation.account.login}`);
+
+  for (const repo of repos) {
     try {
-      await getOrCreateRepo(repo.id, owner, name, installation.id);
+      await getOrCreateRepo(repo.id, installation.account.login, repo.name, installation.id);
     } catch (err) {
-      console.error(`[webhook] Failed to sync repo ${name}:`, err);
+      console.error(`[webhook] Failed to sync repo "${repo.name}":`, err.message);
     }
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Metric computation helpers
+// ---------------------------------------------------------------------------
 
+/**
+ * Computes pass/fail metrics from live bundle data and stored baselines.
+ * Only emits a metric when meaningful data exists — never invents values.
+ */
 function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds }) {
   const metrics = [];
 
-  // Bundle KB — only if CI artifact was present
   if (bundleResult.totalKb !== null) {
-    const bundleBefore = bundleBaseline?.value ?? null;
-    const bundleAfter  = bundleResult.totalKb;
-    const bundleDelta  = bundleBefore
-      ? ((bundleAfter - bundleBefore) / bundleBefore) * 100
-      : 0;
+    const before = bundleBaseline?.value ?? null;
+    const after  = bundleResult.totalKb;
+    const delta  = before ? ((after - before) / before) * 100 : 0;
+
     metrics.push({
-      key:     'bundle_kb',
-      label:   'Bundle Size',
-      before:  bundleBefore,
-      after:   bundleAfter,
-      delta:   bundleDelta,
-      unit:    'KB',
+      key:       'bundle_kb',
+      label:     'Bundle Size',
+      before,
+      after,
+      delta,
+      unit:      'KB',
       threshold: thresholds.bundle_kb,
-      passed:  Math.abs(bundleDelta) <= thresholds.bundle_kb || bundleBefore === null,
+      passed:    Math.abs(delta) <= thresholds.bundle_kb || before === null,
     });
   } else {
-    // No artifact — log and skip (no fake data)
-    console.log('[webhook] Bundle size unavailable (no CI artifact) — skipping bundle metric');
+    console.log('[analysis] No CI artifact — bundle metric skipped');
   }
 
-  // Query count — only if baseline exists.
-  // Real delta is populated by a test harness in production;
-  // for now we report the baseline value and skip regression detection.
+  // Query count and API latency are populated by an external test harness in
+  // production. We report the baseline and mark as passed until real values arrive.
   if (queryBaseline) {
-    metrics.push({
-      key:       'query_count',
-      label:     'Query Count',
-      before:    queryBaseline.value,
-      after:     null,   // populated by test harness in production
-      delta:     0,
-      unit:      'queries',
-      threshold: thresholds.query_count,
-      passed:    true,   // placeholder — real value comes from test harness
-    });
+    metrics.push({ key: 'query_count', label: 'Query Count', before: queryBaseline.value, after: null, delta: 0, unit: 'queries', threshold: thresholds.query_count, passed: true });
   }
 
-  // API p95 — only if baseline exists
   if (apiBaseline) {
-    metrics.push({
-      key:     'api_p95_ms',
-      label:   'API p95 Latency',
-      before:  apiBaseline.value,
-      after:   null,
-      delta:   0,
-      unit:    'ms',
-      threshold: thresholds.api_p95_ms,
-      passed:  true,
-    });
+    metrics.push({ key: 'api_p95_ms', label: 'API p95 Latency', before: apiBaseline.value, after: null, delta: 0, unit: 'ms', threshold: thresholds.api_p95_ms, passed: true });
   }
 
   return metrics;
 }
 
 function buildResultsJson(metrics) {
-  const result = {};
-  for (const m of metrics) {
-    result[m.key] = { before: m.before, after: m.after, delta: m.delta };
-  }
-  return result;
+  return Object.fromEntries(metrics.map(m => [m.key, { before: m.before, after: m.after, delta: m.delta }]));
 }
 
-// ─── Exports ──────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
 module.exports = {
   app,
   middleware: createNodeMiddleware(app, { path: '/api/github/webhooks' }),

@@ -1,107 +1,105 @@
 /**
- * Bundle size analyser.
+ * bundle.js — GitHub Actions artifact downloader and bundle size extractor
  *
- * Strategy:
- *   1. Look for a GitHub Actions artifact named "bundle-stats" on the head commit.
- *   2. Download it and parse webpack/vite stats.json to compute total bundle KB.
- *   3. If no artifact is found, return { totalKb: null } so the webhook can
- *      treat this PR as a "no bundle data" run instead of using a fake value.
+ * Searches completed workflow runs for a "bundle-stats" artifact, downloads
+ * the ZIP, and parses stats.json into a normalised result object. Returns
+ * { totalKb: null } when no artifact is found so callers can display
+ * "no data" rather than surfacing a misleading zero.
+ *
+ * Supports both raw JSON uploads and the ZIP-wrapped format that
+ * actions/upload-artifact@v4 produces by default.
  */
 
 const JSZip = require('jszip');
 
+/**
+ * @param {import('@octokit/rest').Octokit} octokit
+ * @param {{ owner: { login: string }, name: string }} repository
+ * @param {string} sha  - Head commit SHA to search artifacts for
+ * @returns {Promise<{ totalKb: number|null, chunks: Array, source: string }>}
+ */
 async function analyseBundle(octokit, repository, sha) {
   const owner    = repository.owner.login;
   const repoName = repository.name;
 
   try {
-    // List recent workflow runs for this SHA
     const { data: runsData } = await octokit.rest.actions.listWorkflowRunsForRepo({
       owner,
-      repo: repoName,
+      repo:     repoName,
       head_sha: sha,
       per_page: 10,
-      status: 'completed',
+      status:   'completed',
     });
 
     for (const run of runsData.workflow_runs) {
       const { data: artifactsData } = await octokit.rest.actions.listWorkflowRunArtifacts({
-        owner,
-        repo: repoName,
-        run_id: run.id,
+        owner, repo: repoName, run_id: run.id,
       });
 
-      const statsArtifact = artifactsData.artifacts.find(a => a.name === 'bundle-stats');
-      if (!statsArtifact) continue;
+      const artifact = artifactsData.artifacts.find(a => a.name === 'bundle-stats');
+      if (!artifact) continue;
 
-      // Download the artifact ZIP (returns an ArrayBuffer)
       const { data: zipData } = await octokit.rest.actions.downloadArtifact({
-        owner,
-        repo: repoName,
-        artifact_id: statsArtifact.id,
+        owner, repo: repoName,
+        artifact_id:    artifact.id,
         archive_format: 'zip',
       });
 
       return parseStatsJson(Buffer.from(zipData));
     }
   } catch (err) {
-    console.warn('[bundle] Could not fetch artifact:', err.message);
+    console.warn('[bundle] Artifact fetch failed:', err.message);
   }
 
-  // ── No CI artifact found ───────────────────────────────────────────────────
-  // Return null so the caller can show "no data" instead of a fake number.
-  console.log('[bundle] No bundle-stats artifact found — returning null (no data).');
+  console.log('[bundle] No bundle-stats artifact found — returning null');
   return { totalKb: null, chunks: [], source: 'no-artifact' };
 }
 
 /**
- * Parse webpack/vite stats.json (raw or inside a ZIP) to total KB + chunk breakdown.
- * Handles both:
- *   - Raw JSON buffer (some CI setups upload stats.json directly)
- *   - ZIP archive containing stats.json (GitHub actions/upload-artifact wraps it)
+ * Parses a bundle stats buffer that is either raw JSON or a ZIP containing
+ * stats.json (the format produced by actions/upload-artifact).
  */
 async function parseStatsJson(buffer) {
-  // Try direct JSON parse first
+  // Try raw JSON first — some CI setups upload the file directly
   try {
     return extractStats(JSON.parse(buffer.toString('utf8')));
-  } catch (_) {
-    // Not raw JSON — try ZIP extraction
-  }
+  } catch { /* not raw JSON */ }
 
+  // Unwrap ZIP
   try {
     const zip = await JSZip.loadAsync(buffer);
-    const statsFile = zip.file('stats.json') || (
-      // Search recursively for stats.json inside subdirectories
-      Object.values(zip.files).find(f => !f.dir && f.name.endsWith('stats.json'))
-    );
+    const statsFile =
+      zip.file('stats.json') ||
+      Object.values(zip.files).find(f => !f.dir && f.name.endsWith('stats.json'));
+
     if (!statsFile) {
       console.warn('[bundle] stats.json not found inside artifact ZIP');
       return { totalKb: null, chunks: [], source: 'no-stats-json' };
     }
-    const content = await statsFile.async('string');
-    return extractStats(JSON.parse(content));
+
+    return extractStats(JSON.parse(await statsFile.async('string')));
   } catch (err) {
-    console.warn('[bundle] Failed to extract bundle stats from ZIP:', err.message);
+    console.warn('[bundle] Failed to extract stats from ZIP:', err.message);
     return { totalKb: null, chunks: [], source: 'parse-error' };
   }
 }
 
 /**
- * Extract metrics from a parsed stats.json object.
- * Supports both webpack stats.json and rollup-plugin-visualizer raw-data format.
+ * Normalises a parsed stats.json object into DeployGuard's internal format.
+ * Compatible with webpack stats.json and rollup-plugin-visualizer output.
  */
 function extractStats(json) {
-  const assets = json.assets || json.chunks || [];
+  const assets     = json.assets || json.chunks || [];
   const totalBytes = assets.reduce((acc, a) => acc + (a.size || a.gzipSize || 0), 0);
 
   if (totalBytes === 0) {
-    console.warn('[bundle] Stats JSON has zero total bytes — no meaningful data');
+    console.warn('[bundle] stats.json reports zero bytes — no usable data');
     return { totalKb: null, chunks: [], source: 'zero-bytes' };
   }
 
   return {
     totalKb: Math.round(totalBytes / 1024),
-    chunks: assets
+    chunks:  assets
       .map(a => ({ name: a.name || a.id, kb: Math.round((a.size || 0) / 1024) }))
       .sort((a, b) => b.kb - a.kb)
       .slice(0, 20),

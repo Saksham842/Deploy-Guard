@@ -50,9 +50,84 @@ A modern, responsive user interface designed with rich aesthetics:
 
 ---
 
-## 💾 Database Schema Design
+## 📁 Project Structure
 
-DeployGuard uses **PostgreSQL** to maintain historical baselines, check logs, and repository configurations.
+```
+Deploy-Guard/
+│
+├── .github/
+│   └── workflows/
+│       └── bundle-analysis.yml          # DeployGuard's own CI — builds the React dashboard
+│                                        # and uploads stats.json on every PR and main push
+│
+├── apps/
+│   │
+│   ├── server/                          # Node.js · Express · @octokit/app
+│   │   └── src/
+│   │       ├── analysers/
+│   │       │   ├── bundle.js            # Downloads the CI artifact ZIP via GitHub API,
+│   │       │   │                        # parses stats.json, and returns totalKb
+│   │       │   └── packageDiff.js       # Diffs package.json between base and head SHA
+│   │       │                            # to detect newly added / removed dependencies
+│   │       ├── nlp/
+│   │       │   └── client.js            # HTTP client for the FastAPI NLP microservice
+│   │       ├── routes/
+│   │       │   └── api.js               # REST API — repos, checks, thresholds, AI review,
+│   │       │                            # and GitHub OAuth callback
+│   │       ├── utils/
+│   │       │   └── groqExplain.js       # AI explanation client — tries NLP service first,
+│   │       │                            # falls back to calling Groq directly from Node
+│   │       ├── __tests__/
+│   │       │   └── webhook.test.js      # Unit tests for webhook pipeline logic
+│   │       ├── comment.js               # Builds the markdown PR comment body
+│   │       ├── db.js                    # All PostgreSQL queries (repos, baselines, checks)
+│   │       └── webhook.js               # GitHub App event handlers — the core pipeline
+│   │
+│   ├── nlp/                             # Python · FastAPI · SentenceTransformers · Groq
+│   │   ├── ai_features.py               # explain_regression(), review_repo(), summarize_pass()
+│   │   ├── groq_client.py               # Shared async Groq API wrapper (call_groq)
+│   │   ├── main.py                      # FastAPI app + /classify /explain /summarize /review
+│   │   ├── train_v2.py                  # Trains the SentenceTransformer commit classifier
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   │
+│   └── web/                             # React · Vite · Recharts · Tailwind
+│       ├── scripts/
+│       │   └── generate-stats.mjs       # Post-build script — scans dist/ and writes stats.json
+│       └── src/
+│           ├── components/
+│           │   ├── AIReviewCard.jsx      # Renders the Groq health review panel
+│           │   ├── Badge.jsx             # Status badge (pass / fail / neutral)
+│           │   ├── CheckRow.jsx          # Single check entry in the history table
+│           │   ├── MetricChart.jsx       # Recharts line chart for bundle size history
+│           │   ├── Navbar.jsx            # Top navigation with OAuth user state
+│           │   ├── ParticleBackground.jsx # Animated canvas particle effect
+│           │   └── RepoCard.jsx          # Repository summary card with delta indicators
+│           ├── pages/
+│           │   ├── AuthCallback.jsx      # Handles GitHub OAuth redirect → stores token
+│           │   ├── Dashboard.jsx         # Main view — repo list + onboarding modal
+│           │   ├── Docs.jsx              # In-app documentation page
+│           │   ├── Login.jsx             # Landing / login page
+│           │   ├── RepoDetail.jsx        # Per-repo check history and threshold settings
+│           │   └── Settings.jsx          # Threshold configuration sliders
+│           ├── api.js                    # Axios wrapper for all backend API calls
+│           └── index.css                 # Global styles + design tokens
+│
+├── db/
+│   └── migrations/
+│       └── 001_initial.sql              # Full PostgreSQL schema (repos, baselines,
+│                                        # checks, regression_causes, users)
+│
+├── docs/
+│   └── onboarding.md                    # Step-by-step integration guide for tenant repos
+│
+├── .env.example                         # Environment variable reference with descriptions
+├── package.json                         # npm workspaces root — runs all apps concurrently
+├── render.yaml                          # Render.com deployment config for server + web
+└── README.md
+```
+
+## 💾 Database Schema Design
 
 ```mermaid
 erDiagram

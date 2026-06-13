@@ -157,19 +157,20 @@ function OnboardingModal({ onClose }) {
       content: (
         <div>
           <p className="text-slate-300 text-sm mb-3">
-            Create a file at <code className="text-blue-400 font-mono text-xs">.github/workflows/deployguard.yml</code> and paste the workflow configuration below.
+            Create <code className="text-blue-400 font-mono text-xs">.github/workflows/deployguard.yml</code> and paste the config below.
+            The workflow <strong className="text-white">auto-detects your project structure</strong> — no edits needed for root, <code className="text-blue-400 font-mono text-xs">client/</code>, <code className="text-blue-400 font-mono text-xs">frontend/</code>, monorepos, or Next.js.
           </p>
-          <div className="mb-4">
-            <span className="text-[10px] text-slate-500 font-semibold tracking-widest uppercase block mb-1">📁 Folder Structure to Follow:</span>
+          <div className="mb-3">
+            <span className="text-[10px] text-slate-500 font-semibold tracking-widest uppercase block mb-1">📁 Place the file here:</span>
             <pre className="bg-[#0d1117] border border-[#21262d] rounded-xl p-3 text-xs text-[#c9d1d9] font-mono leading-relaxed select-none">
 {`your-project-root/
 └── .github/
     └── workflows/
-        └── deployguard.yml  <── (Create file here)`}
+        └── deployguard.yml  ← (create this file)`}
             </pre>
           </div>
           <p className="text-slate-400 text-[11px] mb-3 leading-relaxed">
-            This compiles your project securely inside your own GitHub runner and uploads the size statistics to GitHub's secure artifact storage.
+            Your source code never leaves GitHub — the Action builds and measures inside your own runner, then uploads only a metadata file (file sizes). See the <strong>Structures</strong> tab for full compatibility details.
           </p>
         </div>
       ),
@@ -319,21 +320,40 @@ jobs:
 
   const faqs = [
     {
-      q: 'Why does the check stay stuck in "Waiting for Bundle Analysis CI..."?',
-      a: 'This means your GitHub Actions build hasn\'t completed yet, or it hasn\'t uploaded the compiled statistics. Verify that the Action is executing successfully and that it uploads an artifact named exactly "bundle-stats" containing "stats.json".'
+      q: 'Why is the check stuck in "Waiting for Bundle Analysis CI…"?',
+      a: 'DeployGuard received the PR event but the companion workflow hasn\'t finished or the artifact wasn\'t uploaded. Check the Actions tab in your repo — the job must be named "DeployGuard Bundle Stats" and upload an artifact named exactly "bundle-stats" containing a file called "stats.json".'
     },
     {
-      q: 'Does my proprietary source code leave GitHub?',
-      a: 'No. DeployGuard never reads, clones, or stores your source code. The compilation is done in your own environment (GitHub runner), and only a metrics metadata file (file sizes and names) is sent to our server.'
+      q: 'Does my source code ever leave GitHub?',
+      a: 'No. DeployGuard never downloads, clones, or reads your source code. The GitHub Action compiles inside your own runner and only uploads a metadata JSON file with file sizes and names. DeployGuard reads only that metadata.'
     },
     {
-      q: 'Can I configure size limits and custom thresholds?',
-      a: 'Yes! Navigate to the Settings tab for your connected repository on the DeployGuard dashboard to customize alert thresholds for bundle size, DB query count, and latency limits.'
+      q: 'What if the Groq AI service goes down?',
+      a: 'DeployGuard degrades gracefully. Bundle size checks, check runs, and PR comments all still work. Only the AI-generated natural language explanation is skipped — a static fallback message is shown instead. Your gate status is never affected by AI availability.'
+    },
+    {
+      q: 'My app is inside a subfolder (client/, frontend/, apps/web/…). Does it still work?',
+      a: 'Yes — automatically. The workflow includes a "Detect frontend directory" step that scans common locations in order (root → client → frontend → src → apps/web → web → app → packages/web) and runs install + build in the right folder. No edits needed for the vast majority of project layouts. See the Structures tab for the full compatibility table.'
+    },
+    {
+      q: 'How do I change regression thresholds?',
+      a: 'Log into the DeployGuard dashboard with GitHub OAuth, select your repository, and go to Settings. You can adjust the maximum allowed bundle size increase (default ±10%), DB query count, and API p95 latency limits per repository.'
     },
     {
       q: 'How does the NLP commit classifier work?',
-      a: 'Every commit on your PR is analyzed by a 3-tier NLP pipeline. It categorizes the regression cause (e.g. dependency upgrades, code refactoring, new features) using local sentence embeddings and a Llama-3.1 Groq fallback model.'
+      a: 'Each commit message is run through a 3-tier pipeline: (1) a local SentenceTransformer model — fast, free, zero latency; (2) Groq Llama-3.1 if local confidence < 55%; (3) a graceful fallback to the best local guess if both are unavailable. This means classification never blocks your check run.'
     }
+  ];
+
+  const structures = [
+    { layout: 'Standard Vite / CRA at root', dir: '.', detected: true },
+    { layout: 'client/ + server/ split',      dir: 'client',      detected: true },
+    { layout: 'frontend/ monolith',            dir: 'frontend',    detected: true },
+    { layout: 'Turborepo apps/web/',           dir: 'apps/web',    detected: true },
+    { layout: 'web/ or app/ directory',        dir: 'web / app',   detected: true },
+    { layout: 'packages/web/ (npm workspaces)',dir: 'packages/web', detected: true },
+    { layout: 'Next.js (.next/static output)', dir: '.',           detected: true },
+    { layout: 'CRA (build/ output)',           dir: '.',           detected: true },
   ];
 
   const handleCopy = (code) => {
@@ -365,22 +385,21 @@ jobs:
 
         {/* Navigation Tabs */}
         <div className="flex border-b border-[#1e2d4a]/60 bg-[#070b14]/30 px-6">
-          <button 
-            onClick={() => setActiveTab('steps')}
-            className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'steps' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            📖 Setup Guide
-          </button>
-          <button 
-            onClick={() => setActiveTab('faqs')}
-            className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'faqs' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            ❓ FAQs
-          </button>
+          {[
+            { key: 'steps',      label: '📖 Setup Guide' },
+            { key: 'structures', label: '📁 Structures' },
+            { key: 'faqs',       label: '❓ FAQs' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === tab.key ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Scrollable Content */}
@@ -446,6 +465,41 @@ jobs:
                 )}
               </div>
 
+            </div>
+          ) : activeTab === 'structures' ? (
+            <div>
+              <p className="text-slate-300 text-sm mb-4">
+                The workflow auto-detects your frontend directory — paste the same YAML into any of these project layouts and it will just work.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-[#1e2d4a]/60">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-[#070b14]/60 text-slate-400 text-left">
+                      <th className="px-4 py-3 font-semibold">Project layout</th>
+                      <th className="px-4 py-3 font-semibold">Frontend dir</th>
+                      <th className="px-4 py-3 font-semibold text-center">Auto-detected</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {structures.map((s, i) => (
+                      <tr key={i} className={`border-t border-[#1e2d4a]/30 ${i % 2 === 0 ? 'bg-transparent' : 'bg-[#070b14]/20'}`}>
+                        <td className="px-4 py-3 text-slate-200">{s.layout}</td>
+                        <td className="px-4 py-3 font-mono text-blue-400">{s.dir}</td>
+                        <td className="px-4 py-3 text-center text-green-400">✅</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+                <strong className="text-slate-400">Custom layout?</strong> Add your frontend directory to the <code className="text-blue-400">for dir in …</code> list in the Detect step. The rest of the workflow adapts automatically.
+              </p>
+              <div className="mt-4 bg-[#070b14]/50 border border-[#1e2d4a]/40 rounded-xl p-4">
+                <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-widest mb-2">Build output auto-discovery</p>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  After building, the stats generator checks <code className="text-blue-400">dist/</code>, <code className="text-blue-400">build/</code>, <code className="text-blue-400">out/</code>, and <code className="text-blue-400">.next/static</code> inside the detected frontend folder, then falls back to root-level dirs. It never exits with an error — if no bundle files are found, a placeholder <code className="text-blue-400">stats.json</code> is written so the upload step always succeeds.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-6">
