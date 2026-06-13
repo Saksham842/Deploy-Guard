@@ -132,12 +132,42 @@ You can configure limits (e.g., maximum allowable bundle size increase or query 
 2. Select your repository.
 3. Go to **Settings** and modify the threshold configuration (default is `+10 KB` for bundle sizes and `+20` database queries).
 
-### 5. Can I use DeployGuard on a monorepo?
-**Yes.** You will just need to point the `cache-dependency-path` and build folders to your sub-project. For example, change:
+### 5. Can I use DeployGuard on a monorepo or project with subfolders?
+**Yes.** If your Vite app is inside a subdirectory (e.g. `frontend/` or `apps/web/`):
+1. **Disable cache or specify the path**: Either remove the `cache: 'npm'` line from `Setup Node.js` (simplest), or set `cache-dependency-path` to the subdirectory's lock file.
+2. **Add working-directory**: Add `working-directory: <your-folder>` to the Install, Build, and any Script steps.
+3. **Update Upload Path**: Change the artifact `path` to point to `<your-folder>/dist/stats.json`.
+
+Example configuration for a subfolder named `frontend`:
 ```yaml
-cache-dependency-path: 'apps/web/package-lock.json'
-path: 'apps/web/dist/stats.json'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Vite App
+        working-directory: frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload Bundle Stats
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: frontend/dist/stats.json
+          retention-days: 7
+          if-no-files-found: warn
 ```
 
 ### 6. Do I need to buy a Groq API Key?
 No. DeployGuard comes pre-configured with a fallback API key, but for high-volume repositories, we recommend supplying your own free API key under the dashboard settings to avoid shared rate limits.
+
