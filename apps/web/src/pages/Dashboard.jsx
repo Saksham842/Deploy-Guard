@@ -195,7 +195,6 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: 'package-lock.json' # Change path if using a monorepo
 
       - name: Install Dependencies
         run: npm ci
