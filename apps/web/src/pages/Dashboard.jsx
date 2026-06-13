@@ -195,58 +195,86 @@ jobs:
         with:
           node-version: '20'
 
+      # ── Step 1: Auto-detect which folder contains the frontend ─────────────
+      # Checks common locations (root, client/, frontend/, src/, apps/web/, etc.)
+      # for a package.json that has a "build" script, then exports FRONTEND_DIR
+      # so every subsequent step uses the right working directory automatically.
+      - name: Detect frontend directory
+        run: |
+          FRONTEND_DIR="."
+          for dir in . client frontend src apps/web web app packages/web; do
+            if [ -f "$dir/package.json" ]; then
+              HAS_BUILD=$(node -e "try{const p=require('./$dir/package.json');console.log(p.scripts&&p.scripts.build?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
+              if [ "$HAS_BUILD" = "yes" ]; then
+                FRONTEND_DIR="$dir"
+                break
+              fi
+            fi
+          done
+          echo "FRONTEND_DIR=$FRONTEND_DIR" >> $GITHUB_ENV
+          echo "[DeployGuard] Frontend directory: $FRONTEND_DIR"
+
+      # ── Step 2: Install & Build from the detected directory ────────────────
       - name: Install Dependencies
+        working-directory: \${{ env.FRONTEND_DIR }}
         run: npm install
 
       - name: Build App
+        working-directory: \${{ env.FRONTEND_DIR }}
         run: npm run build
         env:
           NODE_ENV: production
 
+      # ── Step 3: Scan for bundle files and write stats.json ─────────────────
+      # Looks for JS/CSS output in dist/, build/, out/, .next/static relative
+      # to the detected frontend directory. Never exits with code 1 — writes a
+      # placeholder if no bundle files are found so the upload step succeeds.
       - name: Generate Bundle Stats
+        env:
+          FRONTEND_DIR: \${{ env.FRONTEND_DIR }}
         run: |
           node -e "
-          const fs = require('fs');
+          const fs   = require('fs');
           const path = require('path');
+          const base = process.env.FRONTEND_DIR || '.';
 
-          /* Auto-discover the build output folder — supports Vite, CRA, Next.js etc. */
-          const candidates = ['dist', 'build', 'out', '.next/static'];
-          const distDir = candidates.find(d => fs.existsSync(d)) || 'dist';
+          const outputDirs = ['dist','build','out','.next/static']
+            .map(d => path.join(base, d))
+            .concat(['dist','build','out']); // also check root as fallback
+
+          const distDir = outputDirs.find(d => {
+            if (!fs.existsSync(d)) return false;
+            try { return fs.readdirSync(d).length > 0; } catch { return false; }
+          }) || path.join(base, 'dist');
 
           const walk = (dir) => {
-            let results = [];
+            let r = [];
             try {
               fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
                 const p = path.join(dir, e.name);
-                if (e.isDirectory()) results = results.concat(walk(p));
-                else {
-                  const ext = path.extname(e.name).toLowerCase();
-                  if (['.js', '.mjs', '.cjs', '.css'].includes(ext)) {
-                    results.push({
-                      name: path.relative(distDir, p).split(path.sep).join('/'),
-                      size: fs.statSync(p).size
-                    });
-                  }
-                }
+                if (e.isDirectory()) r = r.concat(walk(p));
+                else if (['.js','.mjs','.cjs','.css'].includes(path.extname(e.name).toLowerCase()))
+                  r.push({ name: path.relative(distDir, p).split(path.sep).join('/'), size: fs.statSync(p).size });
               });
-            } catch (_) {}
-            return results;
+            } catch(_) {}
+            return r;
           };
 
           const assets = walk(distDir);
+          const statsPath = path.join(distDir, 'stats.json');
+          fs.mkdirSync(distDir, { recursive: true });
 
           if (assets.length === 0) {
-            console.warn('[DeployGuard] No JS/CSS bundle files found in ' + distDir + '/.');
-            console.warn('[DeployGuard] Writing placeholder stats.json so upload step succeeds.');
-            fs.mkdirSync(distDir, { recursive: true });
-            fs.writeFileSync(path.join(distDir, 'stats.json'), JSON.stringify({ assets: [], _warning: 'No bundle files detected' }, null, 2));
+            console.warn('[DeployGuard] No JS/CSS files found — writing placeholder.');
+            fs.writeFileSync(statsPath, JSON.stringify({ assets: [], _warning: 'No bundle files detected' }, null, 2));
           } else {
-            fs.writeFileSync(path.join(distDir, 'stats.json'), JSON.stringify({ assets }, null, 2));
-            const totalKb = (assets.reduce((s, a) => s + a.size, 0) / 1024).toFixed(1);
-            console.log('[DeployGuard] Bundle: ' + assets.length + ' files, ' + totalKb + ' KB total');
+            fs.writeFileSync(statsPath, JSON.stringify({ assets }, null, 2));
+            const kb = (assets.reduce((s,a) => s+a.size, 0) / 1024).toFixed(1);
+            console.log('[DeployGuard] ' + assets.length + ' files, ' + kb + ' KB  →  ' + statsPath);
           }
           "
 
+      # ── Step 4: Upload — covers every possible output location ─────────────
       - name: Upload Bundle Stats
         uses: actions/upload-artifact@v4
         with:
@@ -255,6 +283,15 @@ jobs:
             dist/stats.json
             build/stats.json
             out/stats.json
+            client/dist/stats.json
+            client/build/stats.json
+            frontend/dist/stats.json
+            frontend/build/stats.json
+            src/dist/stats.json
+            apps/web/dist/stats.json
+            web/dist/stats.json
+            app/dist/stats.json
+            packages/web/dist/stats.json
           retention-days: 7
           if-no-files-found: warn`
     },
