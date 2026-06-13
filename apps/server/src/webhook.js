@@ -81,10 +81,12 @@ async function handlePR({ octokit, payload }) {
 async function handleWorkflowRun({ octokit, payload }) {
   const { workflow_run, repository, installation } = payload;
 
-  // Only care about our specific workflow
-  if (workflow_run.name !== 'Bundle Analysis') return;
+  // Only care about our specific workflows (local development or tenant onboarding names)
+  const allowedWorkflows = ['Bundle Analysis', 'DeployGuard Bundle Stats'];
+  if (!allowedWorkflows.includes(workflow_run.name)) return;
+
   if (workflow_run.conclusion !== 'success') {
-    console.warn(`[workflow_run] Bundle Analysis ended with conclusion=${workflow_run.conclusion} — skipping`);
+    console.warn(`[workflow_run] Workflow '${workflow_run.name}' ended with conclusion=${workflow_run.conclusion} — skipping`);
     return;
   }
 
