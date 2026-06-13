@@ -88,12 +88,9 @@ async function handleWorkflowRun({ octokit, payload }) {
     return;
   }
 
-  // workflow_run.pull_requests is populated by GitHub when the run was triggered by a PR
-  const prs = workflow_run.pull_requests || [];
-  if (prs.length === 0) {
-    console.log('[workflow_run] No associated PRs — skipping (push to main handled by baseline update)');
-    return;
-  }
+  // workflow_run.pull_requests is populated by GitHub when the run was triggered by a PR.
+  // NOTE: this is empty for fork PRs — we handle that below after we have octokit context.
+  let prs = workflow_run.pull_requests || [];
 
   const owner    = repository.owner.login;
   const repoName = repository.name;
@@ -101,8 +98,35 @@ async function handleWorkflowRun({ octokit, payload }) {
 
   console.log(`[workflow_run] Bundle Analysis completed for ${owner}/${repoName} — head ${headSha.slice(0, 7)}`);
 
-  const repo       = await getOrCreateRepo(repository.id, owner, repoName, installation.id);
+  // installation may be absent on some workflow_run events — use optional chaining
+  const installId = installation?.id ?? workflow_run.installation?.id ?? null;
+  const repo       = await getOrCreateRepo(repository.id, owner, repoName, installId);
   const thresholds = await getThresholds(repo.id);
+
+  // ── Fork PR fallback ─────────────────────────────────────────────────────────
+  // GitHub does NOT populate workflow_run.pull_requests for cross-fork PRs.
+  // When the list is empty, query the GitHub API directly for open PRs
+  // whose head SHA matches the workflow run.
+  if (prs.length === 0) {
+    try {
+      const { data: openPRs } = await octokit.rest.pulls.list({
+        owner, repo: repoName, state: 'open', per_page: 10,
+      });
+      const matching = openPRs.filter(pr => pr.head.sha === headSha);
+      if (matching.length === 0) {
+        console.log('[workflow_run] No open PRs match head SHA — skipping (push to main handled by baseline update)');
+        return;
+      }
+      prs = matching.map(pr => ({
+        number: pr.number,
+        base:   { sha: pr.base.sha, ref: pr.base.ref },
+      }));
+      console.log(`[workflow_run] Fork-PR fallback: found ${prs.length} matching PR(s) via API`);
+    } catch (err) {
+      console.warn('[workflow_run] Fork-PR fallback query failed:', err.message);
+      return;
+    }
+  }
 
   for (const pr of prs) {
     const prNumber   = pr.number;
@@ -302,18 +326,19 @@ function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseli
     console.log('[webhook] Bundle size unavailable (no CI artifact) — skipping bundle metric');
   }
 
-  // Query count — only if baseline exists
+  // Query count — only if baseline exists.
+  // Real delta is populated by a test harness in production;
+  // for now we report the baseline value and skip regression detection.
   if (queryBaseline) {
-    const qDelta = ((null - queryBaseline.value) / queryBaseline.value) * 100;
     metrics.push({
-      key:     'query_count',
-      label:   'Query Count',
-      before:  queryBaseline.value,
-      after:   null,   // populated by test harness in production
-      delta:   0,
-      unit:    'queries',
+      key:       'query_count',
+      label:     'Query Count',
+      before:    queryBaseline.value,
+      after:     null,   // populated by test harness in production
+      delta:     0,
+      unit:      'queries',
       threshold: thresholds.query_count,
-      passed:  true,   // placeholder — real value comes from test harness
+      passed:    true,   // placeholder — real value comes from test harness
     });
   }
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const axios   = require('axios');
 const {
+  pool,
   listRepos,
   getRepoByGithubId,
   getRepoChecks,
@@ -109,9 +110,6 @@ router.get('/repos', requireAuth, async (_req, res) => {
 /** GET /api/repos/:owner/:name/checks — recent checks for a repo */
 router.get('/repos/:owner/:name/checks', requireAuth, async (req, res) => {
   try {
-    const repo = await getRepoByGithubId(null); // lookup by owner/name below
-    // Find repo by owner + name
-    const { pool } = require('../db');
     const { rows } = await pool.query(
       `SELECT * FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
       [req.params.owner, req.params.name]
@@ -128,7 +126,6 @@ router.get('/repos/:owner/:name/checks', requireAuth, async (req, res) => {
 /** GET /api/repos/:owner/:name/thresholds — get threshold config */
 router.get('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
   try {
-    const { pool } = require('../db');
     const { rows } = await pool.query(
       `SELECT id, threshold_config FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
       [req.params.owner, req.params.name]
@@ -144,7 +141,6 @@ router.get('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
 router.put('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
   try {
     const { bundle_kb, query_count, api_p95_ms } = req.body;
-    const { pool } = require('../db');
     const { rows } = await pool.query(
       `SELECT id FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
       [req.params.owner, req.params.name]
@@ -161,7 +157,6 @@ router.put('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
 /** GET /api/repos/:owner/:name/ai-review — AI project health review */
 router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
   try {
-    const { pool } = require('../db');
     const { rows } = await pool.query(
       `SELECT id, name FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
       [req.params.owner, req.params.name]

@@ -67,7 +67,15 @@ export default function RepoCard({ repo }) {
 
 function Metric({ label, value, delta }) {
   const isPositive = delta > 0;
-  const deltaColorClass = delta > 10 ? 'text-red-500' : delta > 5 ? 'text-yellow-500' : 'text-green-500';
+  // Negative delta = bundle shrank = always green.
+  // Positive delta: green ≤5%, yellow 5-10%, red >10%.
+  const deltaColorClass = !isPositive
+    ? 'text-green-500'
+    : delta > 10
+    ? 'text-red-500'
+    : delta > 5
+    ? 'text-yellow-500'
+    : 'text-green-500';
 
   return (
     <div>

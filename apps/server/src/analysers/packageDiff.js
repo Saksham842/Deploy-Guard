@@ -45,21 +45,27 @@ async function diffPackageJson(octokit, repository, baseSha, headSha) {
 }
 
 async function fetchPackageJson(octokit, owner, repo, ref) {
-  try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: 'package.json',
-      ref,
-    });
-    const decoded = Buffer.from(data.content, 'base64').toString('utf8');
-    return JSON.parse(decoded);
-  } catch (err) {
-    // 404 = no package.json in this repo (non-Node project)
-    if (err.status === 404) return null;
-    console.warn(`[packageDiff] Could not fetch package.json at ${ref}:`, err.message);
-    return null;
+  // Try the monorepo web sub-package first (most relevant for bundle size).
+  // Fall back to the root package.json for non-monorepo repos.
+  const candidates = ['apps/web/package.json', 'package.json'];
+
+  for (const pkgPath of candidates) {
+    try {
+      const { data } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path: pkgPath,
+        ref,
+      });
+      const decoded = Buffer.from(data.content, 'base64').toString('utf8');
+      return JSON.parse(decoded);
+    } catch (err) {
+      if (err.status === 404) continue; // try next candidate
+      console.warn(`[packageDiff] Could not fetch ${pkgPath} at ${ref}:`, err.message);
+    }
   }
+
+  return null; // no package.json found in any known location
 }
 
 /** Merge dependencies + devDependencies into a single flat map */

@@ -8,7 +8,6 @@
  *      treat this PR as a "no bundle data" run instead of using a fake value.
  */
 
-const { Readable } = require('stream');
 const JSZip = require('jszip');
 
 async function analyseBundle(octokit, repository, sha) {
