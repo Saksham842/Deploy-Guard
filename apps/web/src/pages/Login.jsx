@@ -1,21 +1,7 @@
 import { useEffect, useState } from 'react';
 import ParticleBackground from '../components/ParticleBackground';
 
-function ShieldIcon({ className = "w-6 h-6" }) {
-  return (
-    <svg 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2.2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={`text-blue-500 ${className}`}
-    >
-      <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6z"/>
-    </svg>
-  );
-}
+
 
 const FEATURES = [
   { label: 'Bundle Size Control', desc: 'Auto-scan compilation builds and block bundles exceeding size gates.' },
@@ -111,14 +97,14 @@ export default function Login() {
             />
 
             <div
-              className="relative z-10"
+              className="text-[72px] leading-none filter drop-shadow-[0_0_32px_rgba(59,130,246,0.9)] drop-shadow-[0_0_64px_rgba(59,130,246,0.4)] relative z-10"
               style={{
                 animation: splashPhase === 'entering'
                   ? 'logoEnter 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards'
                   : 'logoFloat 2.5s ease-in-out infinite',
               }}
             >
-              <ShieldIcon className="w-16 h-16 filter drop-shadow-[0_0_24px_rgba(59,130,246,0.85)]" />
+              🛡️
             </div>
           </div>
 
@@ -165,8 +151,12 @@ export default function Login() {
           transform: splashDone ? 'translateY(0)' : 'translateY(20px)',
         }}
       >
-        <div className="flex items-center justify-center gap-2.5 mb-6">
-          <ShieldIcon className="w-7 h-7 filter drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-[logoFloat_3s_ease-in-out_infinite]" />
+        <div className="flex items-center justify-center gap-2.5 mb-5">
+          <span
+            className="text-2xl leading-none filter drop-shadow-[0_0_16px_rgba(59,130,246,0.6)] animate-[logoFloat_3s_ease-in-out_infinite]"
+          >
+            🛡️
+          </span>
           <span className="text-2xl font-extrabold tracking-tight text-white leading-none">
             Deploy<span className="text-blue-500">Guard</span>
           </span>
@@ -214,8 +204,8 @@ export default function Login() {
         }}
       >
         <div className="w-full bg-[#0f1629]/75 border border-[#1e2d4a]/80 rounded-2xl p-6 lg:p-8 backdrop-blur-2xl shadow-2xl flex flex-col">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <ShieldIcon className="w-8 h-8 filter drop-shadow-[0_0_12px_rgba(59,130,246,0.4)]" />
+          <div className="flex items-center justify-center gap-3 mb-5">
+            <span className="text-3xl filter drop-shadow-[0_0_16px_rgba(59,130,246,0.5)]">🛡️</span>
             <div className="text-left">
               <h1 className="text-base lg:text-lg font-extrabold tracking-tight text-white leading-tight">
                 Welcome to <span className="text-blue-500">DeployGuard</span>
