@@ -14,9 +14,11 @@ Environment:
     GROQ_MODEL       — optional, defaults to llama-3.3-70b-versatile
 """
 
+from dotenv import load_dotenv
 import os
 import logging
 import httpx
+load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
