@@ -204,6 +204,35 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Generate Bundle Stats
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const walk = (dir) => {
+            let results = [];
+            try {
+              fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
+                const p = path.join(dir, e.name);
+                if (e.isDirectory()) results = results.concat(walk(p));
+                else if (/\.(js|mjs|cjs|css)$/i.test(e.name)) {
+                  results.push({
+                    name: path.relative('dist', p).replace(/\\/g, '/'),
+                    size: fs.statSync(p).size
+                  });
+                }
+              });
+            } catch (err) {}
+            return results;
+          };
+          const assets = walk('dist');
+          if (assets.length === 0) {
+            console.error('No bundle files found in dist/!');
+            process.exit(1);
+          }
+          fs.writeFileSync('dist/stats.json', JSON.stringify({ assets }, null, 2));
+          "
+
       - name: Upload Bundle Stats
         uses: actions/upload-artifact@v4
         with:

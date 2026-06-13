@@ -70,22 +70,40 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      # ─── BUILD STEP (Choose/uncomment the one matching your bundler) ───
-      
-      # OPTION A: Vite Projects (Default)
-      # Ensure 'rollup-plugin-visualizer' is configured to output JSON.
       - name: Build Vite App
         run: npm run build
         env:
           NODE_ENV: production
 
-      # OPTION B: Next.js Projects
-      # - name: Build Next.js
-      #   run: npx next build --profile --json > dist/stats.json
-
-      # OPTION C: Webpack Projects
-      # - name: Build Webpack App
-      #   run: npx webpack --profile --json > dist/stats.json
+      # ─── 4. Generate Bundle Stats (Automatic, no configuration needed) ───
+      - name: Generate Bundle Stats
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const walk = (dir) => {
+            let results = [];
+            try {
+              fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
+                const p = path.join(dir, e.name);
+                if (e.isDirectory()) results = results.concat(walk(p));
+                else if (/\.(js|mjs|cjs|css)$/i.test(e.name)) {
+                  results.push({
+                    name: path.relative('dist', p).replace(/\\/g, '/'),
+                    size: fs.statSync(p).size
+                  });
+                }
+              });
+            } catch (err) {}
+            return results;
+          };
+          const assets = walk('dist');
+          if (assets.length === 0) {
+            console.error('No bundle files found in dist/!');
+            process.exit(1);
+          }
+          fs.writeFileSync('dist/stats.json', JSON.stringify({ assets }, null, 2));
+          "
 
       # ─── UPLOAD STEP (Required) ───
       # DeployGuard looks for an artifact named exactly "bundle-stats"
