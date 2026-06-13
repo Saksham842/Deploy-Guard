@@ -6,18 +6,12 @@ export default function Dashboard() {
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   useEffect(() => {
     api.getRepos()
       .then(data => { setRepos(data); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
-
-    // Check if onboarding needs to be shown
-    const onboardingShown = localStorage.getItem('dg_onboarding_shown');
-    if (!onboardingShown) {
-      setShowOnboarding(true);
-    }
   }, []);
 
   const passCount = repos.filter(r => r.last_check?.status === 'pass').length;
@@ -29,7 +23,6 @@ export default function Dashboard() {
       {showOnboarding && (
         <OnboardingModal 
           onClose={() => {
-            localStorage.setItem('dg_onboarding_shown', 'true');
             setShowOnboarding(false);
           }} 
         />
