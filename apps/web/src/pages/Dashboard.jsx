@@ -215,11 +215,14 @@ jobs:
               fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
                 const p = path.join(dir, e.name);
                 if (e.isDirectory()) results = results.concat(walk(p));
-                else if (/\.(js|mjs|cjs|css)$/i.test(e.name)) {
-                  results.push({
-                    name: path.relative('dist', p).replace(/\\/g, '/'),
-                    size: fs.statSync(p).size
-                  });
+                else {
+                  const ext = path.extname(e.name).toLowerCase();
+                  if (['.js', '.mjs', '.cjs', '.css'].includes(ext)) {
+                    results.push({
+                      name: path.relative('dist', p).split(path.sep).join('/'),
+                      size: fs.statSync(p).size
+                    });
+                  }
                 }
               });
             } catch (err) {}
