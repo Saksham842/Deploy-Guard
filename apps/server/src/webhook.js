@@ -116,7 +116,17 @@ async function handleWorkflowRun({ octokit, payload }) {
       });
       const matching = openPRs.filter(pr => pr.head.sha === headSha);
       if (matching.length === 0) {
-        console.log('[workflow_run] No open PRs match head SHA — skipping (push to main handled by baseline update)');
+        const isMainBranch = ['main', 'master'].includes(workflow_run.head_branch);
+        if (isMainBranch) {
+          console.log(`[workflow_run] Direct push/merge to branch '${workflow_run.head_branch}' detected — updating baseline`);
+          const bundleResult = await analyseBundle(octokit, { owner: { login: owner }, name: repoName }, headSha);
+          if (bundleResult.totalKb !== null) {
+            await upsertBaseline(repo.id, workflow_run.head_branch, 'bundle_kb', bundleResult.totalKb, headSha);
+            console.log(`[workflow_run] Baseline updated to ${bundleResult.totalKb} KB for branch '${workflow_run.head_branch}'`);
+          }
+        } else {
+          console.log('[workflow_run] No open PRs match head SHA — skipping');
+        }
         return;
       }
       prs = matching.map(pr => ({
@@ -178,11 +188,28 @@ async function runAnalysis({
 }) {
   try {
     // ── 1. Fetch existing baselines ──────────────────────────────────────────
-    const [bundleBaseline, queryBaseline, apiBaseline] = await Promise.all([
+    let [bundleBaseline, queryBaseline, apiBaseline] = await Promise.all([
       getBaseline(repo.id, baseBranch, 'bundle_kb'),
       getBaseline(repo.id, baseBranch, 'query_count'),
       getBaseline(repo.id, baseBranch, 'api_p95_ms'),
     ]);
+
+    // Fallback to main/master branch baseline if target branch has no baseline
+    if (!bundleBaseline && !['main', 'master'].includes(baseBranch)) {
+      const mainBaseline = await getBaseline(repo.id, 'main', 'bundle_kb');
+      const fallbackBranch = mainBaseline ? 'main' : 'master';
+      const [fBundle, fQuery, fApi] = await Promise.all([
+        getBaseline(repo.id, fallbackBranch, 'bundle_kb'),
+        getBaseline(repo.id, fallbackBranch, 'query_count'),
+        getBaseline(repo.id, fallbackBranch, 'api_p95_ms'),
+      ]);
+      if (fBundle) {
+        console.log(`[runAnalysis] Using fallback baseline from '${fallbackBranch}' for branch '${baseBranch}'`);
+        bundleBaseline = fBundle;
+        queryBaseline = fQuery;
+        apiBaseline = fApi;
+      }
+    }
 
     // ── 2. Analyse bundle (fetches CI artifact) ──────────────────────────────
     const bundleResult = await analyseBundle(octokit, { owner: { login: owner }, name: repoName }, headSha);
