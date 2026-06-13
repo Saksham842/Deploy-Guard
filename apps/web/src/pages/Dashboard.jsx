@@ -1,18 +1,28 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import RepoCard from '../components/RepoCard';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Dashboard() {
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     api.getRepos()
       .then(data => { setRepos(data); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
-  }, []);
+
+    // Show onboarding only if it hasn't been shown before (signup/first login)
+    // or if the user clicked the Setup Guide link in the Navbar (?setup=true)
+    const onboardingShown = localStorage.getItem('dg_onboarding_shown');
+    const forceSetup = searchParams.get('setup') === 'true';
+    if (!onboardingShown || forceSetup) {
+      setShowOnboarding(true);
+    }
+  }, [searchParams]);
 
   const passCount = repos.filter(r => r.last_check?.status === 'pass').length;
   const failCount = repos.filter(r => r.last_check?.status === 'fail').length;
@@ -23,7 +33,9 @@ export default function Dashboard() {
       {showOnboarding && (
         <OnboardingModal 
           onClose={() => {
+            localStorage.setItem('dg_onboarding_shown', 'true');
             setShowOnboarding(false);
+            setSearchParams({}); // Clear ?setup=true from URL
           }} 
         />
       )}

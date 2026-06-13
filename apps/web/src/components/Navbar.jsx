@@ -24,6 +24,12 @@ export default function Navbar() {
       {/* Nav Actions */}
       <div className="flex items-center gap-6">
         <Link
+          to="/dashboard?setup=true"
+          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+        >
+          Setup Guide
+        </Link>
+        <Link
           to="/docs"
           className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
         >
