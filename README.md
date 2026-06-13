@@ -2,22 +2,24 @@
 
 > **Automated performance quality gates & AI-powered regression analysis for Pull Requests.**
 > 
-> DeployGuard is a full-stack, enterprise-ready GitHub App that stops performance regressions (bundle size bloat, DB query regressions, and API latency spikes) *before* they hit production. It posts native GitHub Check Runs and markdown analysis comments directly on PRs, complete with NLP-powered root-cause classification and Groq-powered AI explanations.
+> DeployGuard is a full-stack, enterprise-grade GitHub App that detects and blocks performance regressions (bundle size bloat, DB query regressions, and API latency spikes) *before* they hit production. It posts native GitHub Check Runs and markdown analysis comments directly on PRs, complete with NLP-powered root-cause classification and Groq-powered AI explanations.
 
 ---
 
 ## 🚀 Why This Project Matters (The Core Problem)
 
-In modern software engineering, performance regressions usually slip into production silently. A developer adds a heavy library or writes an unoptimized database query, and it goes unnoticed until users experience lag or cloud hosting costs spike.
+In modern web development, performance regressions typically slip into production silently. A developer imports a heavy UI package (like Moment.js or Three.js) or writes an unoptimized database query, and the issue goes unnoticed until users complain about slow loading times, or cloud hosting costs skyrocket.
 
-DeployGuard solves this by **shifting performance metrics left** (directly into the Pull Request loop):
-* **Protects Core Web Vitals:** Blocks bundle size regressions to maintain fast page load times and search rankings.
-* **Reduces Server/DB Costs:** Flags query regressions to protect database resources from unoptimized loops.
-* **Saves Developer Time:** Instead of manually hunting down *why* a build bloated, DeployGuard automatically classifies the cause (e.g. upgraded package, asset additions) and provides a copy-pasteable fix command.
+DeployGuard solves this by **shifting performance analysis left** (directly into the developer's pull request workflow):
+* **Protects Core Web Vitals:** Blocks PRs that exceed maximum allowable bundle size increases to maintain page load speed and SEO rankings.
+* **Reduces Database/API Load:** Prevents N+1 queries, full table scans, or latency-inducing sync operations from merging.
+* **Automates Cause Resolution:** Instead of forcing developers to manually run profiles to find why a bundle grew, DeployGuard classifies the cause (e.g. upgraded dependencies, static assets, refactoring) and generates copy-pasteable fix commands or code suggestions.
 
 ---
 
 ## 🏗️ Architectural Overview
+
+DeployGuard is designed using a **decentralized build pattern** to guarantee security, scalability, and zero compute costs for compilation:
 
 ```
 [ Developer PR ] ────▶ [ GitHub Actions Runner ] ────▶ [ DeployGuard Webhook ]
@@ -27,39 +29,117 @@ DeployGuard solves this by **shifting performance metrics left** (directly into 
                             (Uploads bundle-stats)           (Posts PR Checks & Comments)
 ```
 
-DeployGuard consists of three core components:
-1. **Express.js Backend (`apps/server`):** Listens to GitHub webhook events, verifies cryptographic signatures, handles GitHub OAuth authentication, and orchestrates database transactions.
-2. **FastAPI NLP Service (`apps/nlp`):** Runs the local ML classification models and manages the Groq LLM pipelines.
-3. **React Dashboard (`apps/web`):** A sleek, premium dashboard featuring charts, real-time repository statistics, and structured AI-generated health reports.
+The system is split into three main services:
+
+### 1. 🛡️ Express.js Web Server Backend (`apps/server`)
+The backend orchestrates the integration, database storage, and webhook processing:
+* **Webhook Ingestion:** Authenticates cryptographic payloads from GitHub App webhooks.
+* **PR Analysis Flow:** On a new PR, it schedules a pending GitHub Check. When the Action runner completes, it fetches the artifact ZIP, parses the metadata `stats.json`, and triggers package diffs and commit classifiers.
+* **Dashboard API:** Serves repo history, threshold configurations, and OAuth user sessions.
+
+### 2. 🤖 FastAPI NLP & AI Service (`apps/nlp`)
+A dedicated Python service responsible for semantic commit classification and Groq LLM pipelines:
+* **ML Classifier:** Uses local sentence embeddings (`all-MiniLM-L6-v2`) and a trained classification model to categorize commit messages.
+* **AI Fallback & Generator:** Uses Groq's API (`llama-3.1-8b-instant`) to classify ambiguous commit messages and generate markdown analysis explanations.
+
+### 3. 💻 React Dashboard (`apps/web`)
+A modern, responsive user interface designed with rich aesthetics:
+* **Real-time Metrics:** Displays a repository directory containing check metrics (passes/fails/totals) and historical charts.
+* **Visual Gates Control:** Allows developers to customize performance thresholds (e.g. allow up to +15 KB bundle size growth) via visual slider inputs.
+* **AI Reports:** Displays structured health reports (Strengths, Risks, and Recommendations) generated automatically by Groq.
+
+---
+
+## 💾 Database Schema Design
+
+DeployGuard uses **PostgreSQL** to maintain historical baselines, check logs, and repository configurations.
+
+```mermaid
+erDiagram
+    repos ||--o{ baselines : "has"
+    repos ||--o{ checks : "has"
+    checks ||--o{ regression_causes : "contains"
+    users ||--o{ repos : "administers"
+
+    repos {
+        uuid id PK
+        bigint github_repo_id UK
+        text owner
+        text name
+        bigint install_id
+        jsonb threshold_config
+        timestamptz created_at
+    }
+    baselines {
+        uuid id PK
+        uuid repo_id FK
+        text branch
+        text metric
+        numeric value
+        text commit_sha
+        timestamptz recorded_at
+    }
+    checks {
+        uuid id PK
+        uuid repo_id FK
+        int pr_number
+        text head_sha
+        text base_sha
+        text status
+        jsonb results
+        timestamptz created_at
+    }
+    regression_causes {
+        uuid id PK
+        uuid check_id FK
+        text cause_type
+        text detail
+        numeric confidence
+        timestamptz created_at
+    }
+    users {
+        uuid id PK
+        bigint github_user_id UK
+        text username
+        text avatar_url
+        text access_token
+        timestamptz created_at
+    }
+```
+
+* **`repos`**: Tracks connected repositories, metadata, and custom threshold gate limits.
+* **`baselines`**: Maintains size, query, and API latency measurements per branch to evaluate regressions.
+* **`checks`**: Tracks pull request evaluations (statuses, comparisons, and timestamps).
+* **`regression_causes`**: Links NLP model classifications and confidence scores to checks.
+* **`users`**: Manages developer credentials and access tokens obtained via GitHub OAuth.
 
 ---
 
 ## 💡 Key Engineering Decisions & Trade-Offs
 
-### 1. Decentralized Build Pattern (Security & Scale)
-* **Decision:** We offload the compilation (`npm run build`) to the user's own **GitHub Actions runner** and have it upload a metadata `stats.json` file. DeployGuard simply downloads this JSON metadata.
-* **Why:** Running `npm install` and compiling arbitrary code on our own servers would open us up to **Remote Code Execution (RCE)** vulnerabilities and consume massive compute resources. By decentralizing the build, we guarantee 100% server isolation and zero compute costs for compilation.
+### 1. Zero-Configuration Build Scanner
+* **Decision:** We use an inline Node.js directory-scanning script inside the Actions runner rather than forcing developers to configure bundler plugins (like `rollup-plugin-visualizer`) in their `vite.config.js`.
+* **Why:** Requiring manual bundler config edits makes onboarding complex and error-prone. By scanning the `dist/` directory directly, DeployGuard works instantly out of the box for any standard bundler (Vite, Webpack, Rollup) without package installations.
 
-### 2. 3-Tier Hybrid NLP Engine (Latency & Cost Optimization)
-* **Decision:** Classification of commits is processed via a cascaded 3-tier pipeline:
-  1. **Tier 1 (Local Model):** Matches commit messages against semantic sentence embeddings (`all-MiniLM-L6-v2`) + Logistic Regression ($<50$ms latency, zero cost).
-  2. **Tier 2 (Groq LLM Fallback):** If local confidence is $<0.55$, it escalates the commit message to `llama-3.1-8b-instant` via the Groq API ($~200$ms latency).
-  3. **Tier 3 (Graceful Fallback):** If the LLM rate-limits or is offline, it returns the top local prediction flagged as `low_confidence`.
-* **Why:** Running every commit through a commercial LLM would be slow and expensive. This hybrid model achieves near-instant response times for standard commits while utilizing the reasoning power of an LLM only when necessary.
-
-### 3. Strict Database Baseline Integrity
-* **Decision:** Baselines for comparison (e.g., "what was the previous bundle size?") are updated **only** when a PR merges into the `main` branch **and** passes all checks.
-* **Why:** This prevents **"baseline drift"**—if an unoptimized PR with a bundle size regression is merged, and it updates the baseline, the new larger size becomes the "new normal." By restricting updates to passing merges, we enforce a strict quality floor.
+### 2. Cascaded Hybrid NLP Classification Engine
+* **Decision:** Commits are classified using a 3-tier cascade pipeline:
+  1. **Tier 1 (Local Model):** Classifies the message using SentenceTransformer embeddings ($<50$ms latency, zero cost).
+  2. **Tier 2 (Groq LLM Fallback):** If local model confidence is low ($<0.55$), it calls the Groq API ($~200$ms).
+  3. **Tier 3 (Graceful Fallback):** If the LLM is rate-limited or offline, it falls back to the top local prediction.
+* **Why:** Avoids calling expensive LLM APIs on every git commit, resulting in massive cost savings and low latency while preserving high classification accuracy.
 
 ---
 
 ## 🛠️ Key Technical Challenges Solved (My Contributions)
 
-During development and testing, I identified and resolved several critical system bugs:
+During development, I designed and resolved several critical system bugs and features:
 
-* **Cross-Fork PR Security Handling:** Fixed a bug where external contributor PRs (originating from forks) failed because GitHub restricts the payload `workflow_run.pull_requests` for security. Added a robust API callback fallback that queries open pulls on the target head SHA.
-* **Asset-Filtering Compilation Engine:** Rewrote the stats scanning script to filter out static image/font assets, ensuring that changes to non-code files do not trigger false bundle size alerts.
-* **Cross-Platform Path Compatibility:** Fixed Windows/Linux filepath mismatches in Node scripts by replacing manual pathname string regexes with standard, URL-decoded path resolution (`fileURLToPath`).
+* **Direct Push Baseline Update Fix:** Solved a critical bug in `webhook.js` where direct pushes or PR merges to `main` or `master` (which do not have open PRs) were skipped entirely. This left the baselines database table empty, causing all checks to report `n/a (first run)`. Added direct branch triggers to record base metrics.
+* **Monorepo & Subfolder Support:** Configured the setup templates to support repositories that split codebase folders (such as `frontend/` and `backend/`). Integrated step-scoped `working-directory` execution and turned off default `setup-node` caching to prevent crashes on subfolder projects missing root-level lockfiles.
+* **Target Branch Fallback Engine:** Introduced baseline fallback matching. If a PR is opened against a feature branch that hasn't had a baseline recorded in the database, DeployGuard automatically falls back to comparing against the default branch (`main` or `master`) baseline instead of displaying `n/a`.
+* **FastAPI Local Environment Loading:** Resolved an issue where the NLP microservice failed to load the `GROQ_API_KEY` from the local `.env` file when started via standard Uvicorn commands (disabling LLM-based features). Integrated `python-dotenv` to load local configurations cleanly at startup.
+* **Zero-Escaping Node script:** Rewrote the inline Node.js bundle scanner to use standard string manipulation (`path.extname` and `.split`/`.join`) instead of regex and backslashes, ensuring that the script executes cleanly across `bash`, `cmd`, or `sh` shells without getting parsed incorrectly by GitHub Actions runners.
+* **Cross-Fork PR API Fallback:** Fixed a bug where external contributor PRs (originating from forks) failed because GitHub restricts the payload `workflow_run.pull_requests` for security. Added an API callback fallback that queries open pulls on the target head SHA.
 * **CSS Transform Positioning Fix:** Resolved an issue where the React onboarding modal was pushed to the bottom of the screen. Solved this by restructuring the React DOM hierarchy, rendering the fixed modal outside the parent `transform` container which was overriding the browser viewport layout.
 
 ---

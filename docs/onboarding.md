@@ -38,7 +38,7 @@ Add DeployGuard to your personal account or organization:
 ---
 
 ### Step 2: Add the CI Workflow File
-To allow DeployGuard to read your build sizes, you need to export and upload a `stats.json` file. 
+To allow DeployGuard to read your build sizes, you need to export and upload a `stats.json` file.
 
 Create a new file at `.github/workflows/deployguard.yml` in your repository and paste the following configuration:
 
@@ -64,23 +64,31 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json' # Change path if using a monorepo
+          # Note: cache: 'npm' is intentionally omitted — it requires a root-level
+          # package-lock.json which many repos (monorepos, yarn, pnpm) don't have.
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Build Vite App
+      - name: Build App
         run: npm run build
         env:
           NODE_ENV: production
 
-      # ─── 4. Generate Bundle Stats (Automatic, no configuration needed) ───
+      # ─── Generate Bundle Stats (Automatic, no configuration needed) ───────────
+      # This inline script auto-discovers your build output folder (dist/, build/,
+      # out/, .next/static) and writes a webpack-compatible stats.json.
+      # It never fails the job — if no bundle files are found it writes a warning.
       - name: Generate Bundle Stats
         run: |
           node -e "
           const fs = require('fs');
           const path = require('path');
+
+          /* Auto-discover the build output folder */
+          const candidates = ['dist', 'build', 'out', '.next/static'];
+          const distDir = candidates.find(d => fs.existsSync(d)) || 'dist';
+
           const walk = (dir) => {
             let results = [];
             try {
@@ -91,30 +99,46 @@ jobs:
                   const ext = path.extname(e.name).toLowerCase();
                   if (['.js', '.mjs', '.cjs', '.css'].includes(ext)) {
                     results.push({
-                      name: path.relative('dist', p).split(path.sep).join('/'),
+                      name: path.relative(distDir, p).split(path.sep).join('/'),
                       size: fs.statSync(p).size
                     });
                   }
                 }
               });
-            } catch (err) {}
+            } catch (_) {}
             return results;
           };
-          const assets = walk('dist');
+
+          const assets = walk(distDir);
+
           if (assets.length === 0) {
-            console.error('No bundle files found in dist/!');
-            process.exit(1);
+            console.warn('[DeployGuard] No JS/CSS bundle files found in ' + distDir + '/.');
+            console.warn('[DeployGuard] Writing placeholder stats.json so upload succeeds.');
+            fs.mkdirSync(distDir, { recursive: true });
+            fs.writeFileSync(
+              path.join(distDir, 'stats.json'),
+              JSON.stringify({ assets: [], _warning: 'No bundle files detected' }, null, 2)
+            );
+          } else {
+            fs.writeFileSync(
+              path.join(distDir, 'stats.json'),
+              JSON.stringify({ assets }, null, 2)
+            );
+            const totalKb = (assets.reduce((s, a) => s + a.size, 0) / 1024).toFixed(1);
+            console.log('[DeployGuard] Bundle: ' + assets.length + ' files, ' + totalKb + ' KB total');
           }
-          fs.writeFileSync('dist/stats.json', JSON.stringify({ assets }, null, 2));
           "
 
-      # ─── UPLOAD STEP (Required) ───
+      # ─── UPLOAD STEP (Required) ──────────────────────────────────────────────
       # DeployGuard looks for an artifact named exactly "bundle-stats"
       - name: Upload Bundle Stats
         uses: actions/upload-artifact@v4
         with:
           name: bundle-stats
-          path: dist/stats.json   # Path to your stats.json output
+          path: |
+            dist/stats.json
+            build/stats.json
+            out/stats.json
           retention-days: 7       # Auto-cleanup after 7 days
           if-no-files-found: warn
 ```
@@ -138,7 +162,7 @@ Once the Pull Request is open, you will see the **DeployGuard** check run automa
 ### 1. Why is the DeployGuard check stuck in "Waiting for Bundle Analysis CI..."?
 This means DeployGuard received the PR event, but the companion GitHub Actions workflow hasn't finished running or uploaded the artifact yet.
 * **Check the Actions tab** in your repository. Is the `DeployGuard Bundle Stats` job still running?
-* **Verify the Artifact name:** Ensure the artifact uploaded in step 6 is named exactly `bundle-stats` (lowercase, with a hyphen).
+* **Verify the Artifact name:** Ensure the artifact uploaded is named exactly `bundle-stats` (lowercase, with a hyphen).
 * **Verify the Filename:** The bundle statistics must be written to a file named `stats.json` inside the uploaded zip.
 
 ### 2. Does my source code ever leave GitHub?
@@ -151,13 +175,13 @@ DeployGuard fails gracefully. If the Groq API fails or rate-limits, your PR chec
 You can configure limits (e.g., maximum allowable bundle size increase or query counts) on the **DeployGuard Dashboard**:
 1. Log into the Dashboard using GitHub OAuth.
 2. Select your repository.
-3. Go to **Settings** and modify the threshold configuration (default is `+10 KB` for bundle sizes and `+20` database queries).
+3. Go to **Settings** and modify the threshold configuration (default is `+10%` for bundle sizes).
 
 ### 5. Can I use DeployGuard on a monorepo or project with subfolders?
-**Yes.** If your Vite app is inside a subdirectory (e.g. `frontend/` or `apps/web/`):
-1. **Disable cache or specify the path**: Either remove the `cache: 'npm'` line from `Setup Node.js` (simplest), or set `cache-dependency-path` to the subdirectory's lock file.
-2. **Add working-directory**: Add `working-directory: <your-folder>` to the Install, Build, and any Script steps.
-3. **Update Upload Path**: Change the artifact `path` to point to `<your-folder>/dist/stats.json`.
+**Yes.** The default workflow already auto-discovers `dist/`, `build/`, `out/`, and `.next/static`. If your build script outputs to a custom folder or you run from a subdirectory:
+
+1. **Add `working-directory`** to Install, Build, and Generate steps.
+2. **Update Upload Path** to point to `<your-folder>/dist/stats.json`.
 
 Example configuration for a subfolder named `frontend`:
 ```yaml
@@ -174,11 +198,25 @@ Example configuration for a subfolder named `frontend`:
         working-directory: frontend
         run: npm install
 
-      - name: Build Vite App
+      - name: Build App
         working-directory: frontend
         run: npm run build
         env:
           NODE_ENV: production
+
+      - name: Generate Bundle Stats
+        working-directory: frontend
+        run: |
+          node -e "
+          const fs = require('fs'), path = require('path');
+          const candidates = ['dist', 'build', 'out'];
+          const distDir = candidates.find(d => fs.existsSync(d)) || 'dist';
+          const walk = (dir) => { let r = []; try { fs.readdirSync(dir, { withFileTypes: true }).forEach(e => { const p = path.join(dir, e.name); if (e.isDirectory()) r = r.concat(walk(p)); else if (['.js','.mjs','.cjs','.css'].includes(path.extname(e.name).toLowerCase())) r.push({ name: path.relative(distDir, p).split(path.sep).join('/'), size: fs.statSync(p).size }); }); } catch(_) {} return r; };
+          const assets = walk(distDir);
+          fs.mkdirSync(distDir, { recursive: true });
+          fs.writeFileSync(path.join(distDir, 'stats.json'), JSON.stringify({ assets }, null, 2));
+          console.log('[DeployGuard] ' + assets.length + ' bundle files written.');
+          "
 
       - name: Upload Bundle Stats
         uses: actions/upload-artifact@v4
@@ -189,6 +227,5 @@ Example configuration for a subfolder named `frontend`:
           if-no-files-found: warn
 ```
 
-### 6. Do I need to buy a Groq API Key?
-No. DeployGuard comes pre-configured with a fallback API key, but for high-volume repositories, we recommend supplying your own free API key under the dashboard settings to avoid shared rate limits.
-
+### 6. Do I need a Groq API Key?
+No. DeployGuard's NLP service falls back gracefully when Groq is unavailable. The local ML classifier (SentenceTransformer) handles commit classification without any API calls. For high-volume repositories, you can supply your own free API key from [console.groq.com](https://console.groq.com) to avoid shared rate limits.
