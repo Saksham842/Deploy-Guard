@@ -284,4 +284,4 @@ uvicorn main:app --reload --port 8000
 
 ---
 
-*Developed and maintained with ❤️ by [Saksham Hans](https://github.com/Saksham842).*
+*Developed and maintained by [Saksham Hans](https://github.com/Saksham842).*
