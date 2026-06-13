@@ -6,11 +6,18 @@ export default function Dashboard() {
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     api.getRepos()
       .then(data => { setRepos(data); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
+
+    // Check if onboarding needs to be shown
+    const onboardingShown = localStorage.getItem('dg_onboarding_shown');
+    if (!onboardingShown) {
+      setShowOnboarding(true);
+    }
   }, []);
 
   const passCount = repos.filter(r => r.last_check?.status === 'pass').length;
@@ -19,6 +26,14 @@ export default function Dashboard() {
 
   return (
     <div className="animate-[fadeIn_0.4s_ease_forwards]">
+      {showOnboarding && (
+        <OnboardingModal 
+          onClose={() => {
+            localStorage.setItem('dg_onboarding_shown', 'true');
+            setShowOnboarding(false);
+          }} 
+        />
+      )}
 
       {/* Header */}
       <div className="mb-8 relative z-10">
@@ -102,6 +117,288 @@ function EmptyState() {
       >
         Install GitHub App →
       </a>
+    </div>
+  );
+}
+
+function OnboardingModal({ onClose }) {
+  const [activeTab, setActiveTab] = useState('steps'); // 'steps' | 'faqs'
+  const [activeStep, setActiveStep] = useState(0);
+  const [copied, setCopied] = useState(false);
+
+  const steps = [
+    {
+      title: 'Install the GitHub App',
+      icon: '⚙️',
+      content: (
+        <div>
+          <p className="text-slate-300 text-sm mb-4">
+            Connect DeployGuard to your personal account or organization to begin monitoring.
+          </p>
+          <ol className="list-decimal list-inside text-xs text-slate-400 space-y-2.5 bg-[#0f1629]/50 border border-[#1e2d4a]/40 rounded-xl p-4">
+            <li>Go to the <a href="https://github.com/apps/deployguard-saksham842" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">DeployGuard Installation Page</a>.</li>
+            <li>Click <strong>Install</strong> and choose your target account.</li>
+            <li>Select <strong>"Only select repositories"</strong> and pick the repositories you want to monitor.</li>
+            <li>Authorize the requested permissions (Checks: Read & Write, PRs: Read & Write, Actions: Read).</li>
+          </ol>
+        </div>
+      )
+    },
+    {
+      title: 'Add the CI Workflow File',
+      icon: '📄',
+      content: (
+        <div>
+          <p className="text-slate-300 text-sm mb-3">
+            Create a file at <code className="text-blue-400 font-mono text-xs">.github/workflows/deployguard.yml</code> and paste the workflow configuration below.
+          </p>
+          <p className="text-slate-400 text-[11px] mb-3 leading-relaxed">
+            This compiles your project securely inside your own GitHub runner and uploads the size statistics to GitHub's secure artifact storage.
+          </p>
+        </div>
+      ),
+      code: `name: DeployGuard Bundle Stats
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+
+jobs:
+  bundle-stats:
+    runs-on: ubuntu-latest
+    name: Upload bundle stats for DeployGuard
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json' # Change path if using a monorepo
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Vite App
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload Bundle Stats
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: dist/stats.json
+          retention-days: 7
+          if-no-files-found: warn`
+    },
+    {
+      title: 'Commit and Verify',
+      icon: '🚀',
+      content: (
+        <div>
+          <p className="text-slate-300 text-sm mb-4">
+            Push the new workflow to a branch and open a Pull Request. DeployGuard will register the checks automatically!
+          </p>
+          <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 mb-4 font-mono text-xs text-[#c9d1d9] space-y-1 select-all">
+            <div>git checkout -b setup/deployguard</div>
+            <div>git add .github/workflows/deployguard.yml</div>
+            <div>git commit -m "ci: add DeployGuard bundle stats workflow"</div>
+            <div>git push origin setup/deployguard</div>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            🎉 <strong>That's it!</strong> Once the Pull Request is open, you will see a pending DeployGuard check. It will evaluate and post detailed bundle explanations as soon as the CI build completes.
+          </p>
+        </div>
+      )
+    }
+  ];
+
+  const faqs = [
+    {
+      q: 'Why does the check stay stuck in "Waiting for Bundle Analysis CI..."?',
+      a: 'This means your GitHub Actions build hasn\'t completed yet, or it hasn\'t uploaded the compiled statistics. Verify that the Action is executing successfully and that it uploads an artifact named exactly "bundle-stats" containing "stats.json".'
+    },
+    {
+      q: 'Does my proprietary source code leave GitHub?',
+      a: 'No. DeployGuard never reads, clones, or stores your source code. The compilation is done in your own environment (GitHub runner), and only a metrics metadata file (file sizes and names) is sent to our server.'
+    },
+    {
+      q: 'Can I configure size limits and custom thresholds?',
+      a: 'Yes! Navigate to the Settings tab for your connected repository on the DeployGuard dashboard to customize alert thresholds for bundle size, DB query count, and latency limits.'
+    },
+    {
+      q: 'How does the NLP commit classifier work?',
+      a: 'Every commit on your PR is analyzed by a 3-tier NLP pipeline. It categorizes the regression cause (e.g. dependency upgrades, code refactoring, new features) using local sentence embeddings and a Llama-3.1 Groq fallback model.'
+    }
+  ];
+
+  const handleCopy = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-[fadeIn_0.2s_ease-out]">
+      <div className="bg-[#0f1629] border border-[#1e2d4a]/85 rounded-2xl w-full max-w-[850px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-[scaleIn_0.25s_cubic-bezier(0.34,1.56,0.64,1)]">
+        
+        {/* Modal Header */}
+        <div className="p-6 border-b border-[#1e2d4a]/60 bg-[#070b14]/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🛡️</span>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">DeployGuard Integration Setup</h2>
+              <p className="text-xs text-slate-400">Complete these simple steps to start monitoring performance</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors cursor-pointer text-lg font-bold"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-[#1e2d4a]/60 bg-[#070b14]/30 px-6">
+          <button 
+            onClick={() => setActiveTab('steps')}
+            className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'steps' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            📖 Setup Guide
+          </button>
+          <button 
+            onClick={() => setActiveTab('faqs')}
+            className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'faqs' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            ❓ FAQs
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {activeTab === 'steps' ? (
+            <div className="space-y-6">
+              
+              {/* Stepper indicators */}
+              <div className="flex items-center justify-between bg-[#070b14]/50 border border-[#1e2d4a]/40 rounded-xl p-3.5 mb-6">
+                {steps.map((s, idx) => (
+                  <div key={idx} className="flex items-center flex-1 last:flex-none">
+                    <button
+                      onClick={() => setActiveStep(idx)}
+                      className={`flex items-center justify-center w-8 h-8 rounded-full border text-xs font-bold transition-all cursor-pointer ${
+                        idx === activeStep 
+                          ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                          : idx < activeStep 
+                          ? 'bg-green-500/10 border-green-500/40 text-green-500'
+                          : 'bg-[#0f1629] border-[#1e2d4a] text-slate-400'
+                      }`}
+                    >
+                      {idx < activeStep ? '✓' : idx + 1}
+                    </button>
+                    <span className={`ml-2 text-xs font-semibold ${idx === activeStep ? 'text-white' : 'text-slate-400'}`}>
+                      {s.title.split(' ')[0]}
+                    </span>
+                    {idx < steps.length - 1 && (
+                      <div className="flex-1 h-[2px] bg-[#1e2d4a]/40 mx-4" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step Detail */}
+              <div className="bg-[#070b14]/40 border border-[#1e2d4a]/60 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-xl">
+                    {steps[activeStep].icon}
+                  </div>
+                  <h3 className="text-base font-bold text-white">{steps[activeStep].title}</h3>
+                </div>
+
+                {steps[activeStep].content}
+
+                {/* Optional code box with Copy feature */}
+                {steps[activeStep].code && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between bg-[#0d1117] border-t border-x border-[#21262d] rounded-t-xl px-4 py-2 text-xs text-slate-400 font-mono">
+                      <span>deployguard.yml</span>
+                      <button
+                        onClick={() => handleCopy(steps[activeStep].code)}
+                        className="text-[11px] font-bold text-blue-500 hover:text-blue-400 transition-colors cursor-pointer"
+                      >
+                        {copied ? 'Copied!' : 'Copy Code'}
+                      </button>
+                    </div>
+                    <div className="bg-[#0d1117] border border-[#21262d] rounded-b-xl p-4 overflow-x-auto max-h-[260px] shadow-inner">
+                      <pre className="text-xs text-[#c9d1d9] font-mono leading-relaxed whitespace-pre">
+                        <code>{steps[activeStep].code}</code>
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {faqs.map((faq, idx) => (
+                <div key={idx} className="border-b border-[#1e2d4a]/40 pb-5 last:border-0 last:pb-0">
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-start gap-2">
+                    <span className="text-blue-500">Q:</span>
+                    <span>{faq.q}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed pl-6">
+                    {faq.a}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-6 border-t border-[#1e2d4a]/60 bg-[#070b14]/50 flex items-center justify-between">
+          <div className="text-xs text-slate-400">
+            {activeTab === 'steps' ? `Step ${activeStep + 1} of 3` : 'Onboarding Documentation'}
+          </div>
+          <div className="flex gap-3">
+            {activeTab === 'steps' && activeStep > 0 && (
+              <button
+                onClick={() => setActiveStep(activeStep - 1)}
+                className="btn btn-ghost px-5 py-2 text-xs rounded-xl cursor-pointer"
+              >
+                Back
+              </button>
+            )}
+            {activeTab === 'steps' && activeStep < steps.length - 1 ? (
+              <button
+                onClick={() => setActiveStep(activeStep + 1)}
+                className="btn btn-primary px-5 py-2 text-xs rounded-xl cursor-pointer"
+              >
+                Next Step
+              </button>
+            ) : (
+              <button
+                onClick={onClose}
+                className="btn btn-primary bg-green-600 hover:bg-green-500 px-6 py-2 text-xs rounded-xl shadow-[0_4px_12px_rgba(34,197,94,0.2)] cursor-pointer"
+              >
+                Go to Dashboard
+              </button>
+            )}
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
