@@ -19,7 +19,7 @@ export default function Dashboard() {
   const totalChecks = repos.reduce((acc, r) => acc + (r.check_count || 0), 0);
 
   return (
-    <div className="animate-[fadeIn_0.4s_ease_forwards]">
+    <>
       {showOnboarding && (
         <OnboardingModal 
           onClose={() => {
@@ -27,54 +27,56 @@ export default function Dashboard() {
           }} 
         />
       )}
+      <div className="animate-[fadeIn_0.4s_ease_forwards]">
 
-      {/* Header */}
-      <div className="mb-8 relative z-10">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white mb-1">
-          Dashboard
-        </h1>
-        <p className="text-slate-400 text-sm">
-          Performance baseline monitoring across all connected repositories
-        </p>
+        {/* Header */}
+        <div className="mb-8 relative z-10">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white mb-1">
+            Dashboard
+          </h1>
+          <p className="text-slate-400 text-sm">
+            Performance baseline monitoring across all connected repositories
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 relative z-10">
+          <StatCard label="Connected Repos" value={repos.length} icon="📦" />
+          <StatCard label="Passing" value={passCount} icon="✅" color="green" />
+          <StatCard label="Failing" value={failCount} icon="❌" color="red" />
+          <StatCard label="Total Checks" value={totalChecks} icon="🔍" />
+        </div>
+
+        {/* Repos grid */}
+        {loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-[#0f1629]/75 border border-[#1e2d4a]/80 rounded-xl p-5 backdrop-blur-sm">
+                <div className="animate-pulse bg-[#1e2d4a]/50 h-[18px] w-3/5 rounded-md mb-3" />
+                <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-2/5 rounded-md mb-2" />
+                <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-4/5 rounded-md" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-500 font-medium relative z-10">
+            ⚠️ {error}
+          </div>
+        )}
+
+        {!loading && !error && repos.length === 0 && (
+          <EmptyState />
+        )}
+
+        {!loading && repos.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+            {repos.map(repo => <RepoCard key={repo.id} repo={repo} />)}
+          </div>
+        )}
       </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 relative z-10">
-        <StatCard label="Connected Repos" value={repos.length} icon="📦" />
-        <StatCard label="Passing" value={passCount} icon="✅" color="green" />
-        <StatCard label="Failing" value={failCount} icon="❌" color="red" />
-        <StatCard label="Total Checks" value={totalChecks} icon="🔍" />
-      </div>
-
-      {/* Repos grid */}
-      {loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-[#0f1629]/75 border border-[#1e2d4a]/80 rounded-xl p-5 backdrop-blur-sm">
-              <div className="animate-pulse bg-[#1e2d4a]/50 h-[18px] w-3/5 rounded-md mb-3" />
-              <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-2/5 rounded-md mb-2" />
-              <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-4/5 rounded-md" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-500 font-medium relative z-10">
-          ⚠️ {error}
-        </div>
-      )}
-
-      {!loading && !error && repos.length === 0 && (
-        <EmptyState />
-      )}
-
-      {!loading && repos.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-          {repos.map(repo => <RepoCard key={repo.id} repo={repo} />)}
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -145,6 +147,15 @@ function OnboardingModal({ onClose }) {
           <p className="text-slate-300 text-sm mb-3">
             Create a file at <code className="text-blue-400 font-mono text-xs">.github/workflows/deployguard.yml</code> and paste the workflow configuration below.
           </p>
+          <div className="mb-4">
+            <span className="text-[10px] text-slate-500 font-semibold tracking-widest uppercase block mb-1">📁 Folder Structure to Follow:</span>
+            <pre className="bg-[#0d1117] border border-[#21262d] rounded-xl p-3 text-xs text-[#c9d1d9] font-mono leading-relaxed select-none">
+{`your-project-root/
+└── .github/
+    └── workflows/
+        └── deployguard.yml  <── (Create file here)`}
+            </pre>
+          </div>
           <p className="text-slate-400 text-[11px] mb-3 leading-relaxed">
             This compiles your project securely inside your own GitHub runner and uploads the size statistics to GitHub's secure artifact storage.
           </p>
