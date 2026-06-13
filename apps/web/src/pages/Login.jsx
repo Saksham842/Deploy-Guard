@@ -1,25 +1,41 @@
 import { useEffect, useState } from 'react';
 import ParticleBackground from '../components/ParticleBackground';
 
+function ShieldIcon({ className = "w-6 h-6" }) {
+  return (
+    <svg 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2.2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={`text-blue-500 ${className}`}
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6z"/>
+    </svg>
+  );
+}
+
 const FEATURES = [
-  { icon: '📦', label: 'Bundle Size', desc: 'Tracks JS bundle growth on every PR' },
-  { icon: '⚡', label: 'API Latency', desc: 'p95 response time regression detection' },
-  { icon: '🔍', label: 'Query Count', desc: 'Catches N+1 and unbounded DB fetches' },
-  { icon: '🧠', label: 'NLP Causation', desc: 'Explains regressions from commit context' },
+  { label: 'Bundle Size Control', desc: 'Auto-scan compilation builds and block bundles exceeding size gates.' },
+  { label: 'Latency Regression Alert', desc: 'Detect performance spikes in API endpoints via p95 response time metrics.' },
+  { label: 'Database Query Guard', desc: 'Audit DB query frequencies to catch N+1 query patterns and unbound fetch loops.' },
+  { label: 'Hybrid NLP Diagnostics', desc: 'Categorize commit history into semantic categories to explain delta causes.' },
 ];
 
 const STEPS = [
-  { n: '01', icon: '🔔', text: 'PR opens → GitHub webhook fires' },
-  { n: '02', icon: '📊', text: 'Baselines fetched from PostgreSQL' },
-  { n: '03', icon: '🧠', text: 'NLP classifies commits (v2 model)' },
-  { n: '04', icon: '✅', text: 'Check Run posted: pass or fail' },
+  { n: '01', text: 'Developer submits a Pull Request, initiating the webhook run.' },
+  { n: '02', text: 'GitHub Action compiles code and uploads size and build metadata.' },
+  { n: '03', text: 'DeployGuard compares metrics against historical branch baselines.' },
+  { n: '04', text: 'NLP pipeline classifies commit text and publishes check reports.' },
 ];
 
 const STATS = [
   { value: '10', label: 'NLP Classes' },
-  { value: '384', label: 'Embed Dims' },
+  { value: '3-Tier', label: 'Cascade' },
   { value: '<50ms', label: 'Inference' },
-  { value: '3-Tier', label: 'Pipeline' },
+  { value: 'V2', label: 'Classifier' },
 ];
 
 export default function Login() {
@@ -95,14 +111,14 @@ export default function Login() {
             />
 
             <div
-              className="text-[72px] leading-none filter drop-shadow-[0_0_32px_rgba(59,130,246,0.9)] drop-shadow-[0_0_64px_rgba(59,130,246,0.4)] relative z-10"
+              className="relative z-10"
               style={{
                 animation: splashPhase === 'entering'
                   ? 'logoEnter 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards'
                   : 'logoFloat 2.5s ease-in-out infinite',
               }}
             >
-              🛡️
+              <ShieldIcon className="w-16 h-16 filter drop-shadow-[0_0_24px_rgba(59,130,246,0.85)]" />
             </div>
           </div>
 
@@ -149,12 +165,8 @@ export default function Login() {
           transform: splashDone ? 'translateY(0)' : 'translateY(20px)',
         }}
       >
-        <div className="flex items-center justify-center gap-2.5 mb-5">
-          <span
-            className="text-2xl leading-none filter drop-shadow-[0_0_16px_rgba(59,130,246,0.6)] animate-[logoFloat_3s_ease-in-out_infinite]"
-          >
-            🛡️
-          </span>
+        <div className="flex items-center justify-center gap-2.5 mb-6">
+          <ShieldIcon className="w-7 h-7 filter drop-shadow-[0_0_12px_rgba(59,130,246,0.5)] animate-[logoFloat_3s_ease-in-out_infinite]" />
           <span className="text-2xl font-extrabold tracking-tight text-white leading-none">
             Deploy<span className="text-blue-500">Guard</span>
           </span>
@@ -166,19 +178,17 @@ export default function Login() {
           they hit production.
         </h2>
 
-        <p className="text-slate-400 text-xs lg:text-sm leading-relaxed mb-6 max-w-[420px]">
-          DeployGuard baselines bundle size, API latency, and query counts on every PR —
-          and uses an NLP engine to explain <em>why</em> a regression happened.
+        <p className="text-slate-400 text-xs lg:text-sm leading-relaxed mb-8 max-w-[420px]">
+          Configure automated performance quality gates in your CI pipelines. DeployGuard monitors codebases for regressions and diagnoses roots using local NLP sentence-transformers.
         </p>
 
-        <div className="grid grid-cols-2 gap-3 mb-6 w-full max-w-[480px]">
+        <div className="grid grid-cols-2 gap-3 mb-8 w-full max-w-[480px]">
           {FEATURES.map((f) => (
             <div
               key={f.label}
-              className="p-3.5 bg-[#0f1629]/50 border border-[#1e2d4a]/60 rounded-xl backdrop-blur-sm transition-all hover:bg-blue-500/5 hover:border-blue-500/35 text-left"
+              className="p-4 bg-[#0f1629]/50 border-l-2 border-l-blue-500 border-y border-r border-[#1e2d4a]/40 rounded-xl backdrop-blur-sm transition-all hover:bg-[#1e2d4a]/20 hover:border-blue-500/30 text-left"
             >
-              <div className="text-base mb-1.5">{f.icon}</div>
-              <div className="text-xs font-bold text-white mb-0.5">{f.label}</div>
+              <div className="text-xs font-bold text-white mb-1">{f.label}</div>
               <p className="text-[10px] text-slate-400 leading-normal">{f.desc}</p>
             </div>
           ))}
@@ -204,14 +214,14 @@ export default function Login() {
         }}
       >
         <div className="w-full bg-[#0f1629]/75 border border-[#1e2d4a]/80 rounded-2xl p-6 lg:p-8 backdrop-blur-2xl shadow-2xl flex flex-col">
-          <div className="flex items-center justify-center gap-3 mb-5">
-            <span className="text-3xl filter drop-shadow-[0_0_16px_rgba(59,130,246,0.5)]">🛡️</span>
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <ShieldIcon className="w-8 h-8 filter drop-shadow-[0_0_12px_rgba(59,130,246,0.4)]" />
             <div className="text-left">
               <h1 className="text-base lg:text-lg font-extrabold tracking-tight text-white leading-tight">
                 Welcome to <span className="text-blue-500">DeployGuard</span>
               </h1>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Sign in to protect your pull requests.
+                Sign in to manage and authorize performance gates.
               </p>
             </div>
           </div>
@@ -226,7 +236,6 @@ export default function Login() {
                   <span className="w-6 h-6 flex items-center justify-center text-[9px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-md flex-shrink-0">
                     {s.n}
                   </span>
-                  <span className="text-sm flex-shrink-0">{s.icon}</span>
                   <span className="text-xs text-slate-300 font-medium leading-tight">{s.text}</span>
                 </div>
               ))}
