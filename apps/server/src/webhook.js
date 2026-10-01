@@ -11,17 +11,24 @@
 
 const { App, createNodeMiddleware } = require('@octokit/app');
 const { Octokit }                   = require('@octokit/rest');
-const { analyseBundle }             = require('./analysers/bundle');
+const { analyseBundle, computeChunkDiff } = require('./analysers/bundle');
 const { diffPackageJson }           = require('./analysers/packageDiff');
 const { classifyCommits }           = require('./nlp/client');
 const { buildComment, buildSummary } = require('./comment');
 const { getAIExplanation, getAISummary } = require('./utils/groqExplain');
+const { detectBuildTool, getDefaultBranch } = require('./detect');
+const { generateWorkflow }          = require('./workflowTemplates');
+const { computeMetrics, buildResultsJson } = require('./metrics');
 const {
+  pool,
   getOrCreateRepo,
   getBaseline,
   upsertBaseline,
   saveCheck,
+  getCheckByDeliveryId,
+  getCheckByRepoPrSha,
   getThresholds,
+  updateRepoSetup,
 } = require('./db');
 
 // ---------------------------------------------------------------------------
@@ -99,7 +106,7 @@ async function handlePR({ octokit, payload }) {
 // security measure. When the list is empty we fall back to the REST API and
 // match open PRs by head SHA.
 // ---------------------------------------------------------------------------
-async function handleWorkflowRun({ octokit, payload }) {
+async function handleWorkflowRun({ id: deliveryId, octokit, payload }) {
   const { workflow_run, repository, installation } = payload;
 
   const allowedWorkflows = ['Bundle Analysis', 'DeployGuard Bundle Stats'];
@@ -108,6 +115,15 @@ async function handleWorkflowRun({ octokit, payload }) {
   if (workflow_run.conclusion !== 'success') {
     console.warn(`[workflow_run] "${workflow_run.name}" ended with ${workflow_run.conclusion} — skipping`);
     return;
+  }
+
+  // Idempotency: short-circuit if this webhook delivery was already processed
+  if (deliveryId) {
+    const existingDelivery = await getCheckByDeliveryId(deliveryId);
+    if (existingDelivery && existingDelivery.status !== 'pending') {
+      console.log(`[workflow_run] Delivery ${deliveryId} already processed (status: ${existingDelivery.status}) — skipping`);
+      return;
+    }
   }
 
   const owner    = repository.owner.login;
@@ -120,6 +136,13 @@ async function handleWorkflowRun({ octokit, payload }) {
   const installId = installation?.id ?? workflow_run.installation?.id ?? null;
   const repo       = await getOrCreateRepo(repository.id, owner, repoName, installId);
   const thresholds = await getThresholds(repo.id);
+
+  // Phase 1: once the first CI run lands, the setup PR is effectively merged — advance status
+  if (repo.setup_status !== 'merged') {
+    updateRepoSetup(repo.id, { setup_status: 'merged' }).catch(e =>
+      console.warn('[onboard] Could not advance setup_status:', e.message)
+    );
+  }
 
   let prs = workflow_run.pull_requests || [];
 
@@ -186,7 +209,7 @@ async function handleWorkflowRun({ octokit, payload }) {
       }
     }
 
-    await runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId });
+    await runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId, deliveryId });
   }
 }
 
@@ -202,7 +225,7 @@ async function handleWorkflowRun({ octokit, payload }) {
 // 7. Get an AI-generated explanation (via NLP service → Groq direct fallback)
 // 8. Update the GitHub Check Run and post a PR comment
 // ---------------------------------------------------------------------------
-async function runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId }) {
+async function runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBranch, prNumber, repo, thresholds, checkRunId, deliveryId }) {
   try {
     let [bundleBaseline, queryBaseline, apiBaseline] = await Promise.all([
       getBaseline(repo.id, baseBranch, 'bundle_kb'),
@@ -239,12 +262,29 @@ async function runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBra
     const causes  = await classifyCommits(messages, pkgDiff);
     const metrics = computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds });
     const passed  = metrics.length > 0 ? metrics.every(m => m.passed) : true;
+    let baseChunks = [];
+    try {
+      const prevCheck = await pool.query(
+        `SELECT results FROM checks WHERE repo_id = $1 AND (head_sha = $2 OR status = 'pass') AND results ? 'chunks' ORDER BY created_at DESC LIMIT 1`,
+        [repo.id, baseSha]
+      );
+      if (prevCheck.rows.length > 0 && Array.isArray(prevCheck.rows[0].results?.chunks)) {
+        baseChunks = prevCheck.rows[0].results.chunks;
+      }
+    } catch { /* proceed with empty baseChunks */ }
+
+    const chunkDiff = computeChunkDiff(bundleResult.chunks, baseChunks);
 
     await saveCheck({
       repoId: repo.id, prNumber, headSha, baseSha,
       status:  passed ? 'pass' : 'fail',
-      results: buildResultsJson(metrics),
+      results: {
+        ...buildResultsJson(metrics),
+        chunks: bundleResult.chunks || [],
+        chunkDiff,
+      },
       causes,
+      githubDeliveryId: deliveryId || null,
     });
 
     // AI explanation — passes through NLP service with direct Groq fallback
@@ -298,9 +338,9 @@ async function runAnalysis({ octokit, owner, repoName, headSha, baseSha, baseBra
 }
 
 // ---------------------------------------------------------------------------
-// handleInstallation — registers repos when the GitHub App is installed
+// handleInstallation — registers repos and creates a ready-to-merge setup PR
 // ---------------------------------------------------------------------------
-async function handleInstallation({ payload }) {
+async function handleInstallation({ octokit, payload }) {
   const { installation, repositories, repositories_added } = payload;
   const repos = repositories || repositories_added || [];
 
@@ -308,7 +348,22 @@ async function handleInstallation({ payload }) {
 
   for (const repo of repos) {
     try {
-      await getOrCreateRepo(repo.id, installation.account.login, repo.name, installation.id);
+      const owner    = installation.account.login;
+      const repoName = repo.name;
+
+      // Register the repo in DB
+      const dbRepo = await getOrCreateRepo(repo.id, owner, repoName, installation.id);
+
+      // Detect the build tool from package.json
+      const defaultBranch = await getDefaultBranch(octokit, owner, repoName);
+      const buildTool     = await detectBuildTool(octokit, owner, repoName, defaultBranch);
+      console.log(`[onboard] ${owner}/${repoName} — detected build tool: ${buildTool}`);
+
+      // Persist the build tool immediately
+      await updateRepoSetup(dbRepo.id, { build_tool: buildTool });
+
+      // Create an automated setup PR (skip if workflow already exists)
+      await createSetupPR({ octokit, owner, repoName, defaultBranch, buildTool, repoId: dbRepo.id });
     } catch (err) {
       console.error(`[webhook] Failed to sync repo "${repo.name}":`, err.message);
     }
@@ -316,56 +371,108 @@ async function handleInstallation({ payload }) {
 }
 
 // ---------------------------------------------------------------------------
-// Metric computation helpers
+// createSetupPR — commits .github/workflows/deployguard.yml and opens a PR
 // ---------------------------------------------------------------------------
+async function createSetupPR({ octokit, owner, repoName, defaultBranch, buildTool, repoId }) {
+  const workflowPath   = '.github/workflows/deployguard.yml';
+  const setupBranch    = 'deployguard/setup';
+  const commitMessage  = 'chore: add DeployGuard bundle analysis workflow';
+  const prTitle        = '🛡️ DeployGuard — Add bundle analysis workflow';
+  const prBody         = [
+    '## DeployGuard Setup',
+    '',
+    `This PR was auto-generated by the DeployGuard GitHub App.`,
+    '',
+    `It adds a GitHub Actions workflow that uploads bundle stats on every push/PR, enabling DeployGuard to track bundle size regressions automatically.`,
+    '',
+    `**Detected build tool:** \`${buildTool}\``,
+    '',
+    '**To complete setup:** merge this PR — no further configuration needed.',
+  ].join('\n');
 
-/**
- * Computes pass/fail metrics from live bundle data and stored baselines.
- * Only emits a metric when meaningful data exists — never invents values.
- */
-function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseline, thresholds }) {
-  const metrics = [];
+  try {
+    // 1. Check if workflow already exists on the default branch
+    try {
+      await octokit.rest.repos.getContent({ owner, repo: repoName, path: workflowPath, ref: defaultBranch });
+      console.log(`[onboard] ${owner}/${repoName} — workflow already exists, skipping setup PR`);
+      await updateRepoSetup(repoId, { setup_status: 'merged' });
+      return;
+    } catch (e) {
+      if (e.status !== 404) throw e; // unexpected error
+      // 404 = file doesn't exist — proceed with PR creation
+    }
 
-  if (bundleResult.totalKb !== null) {
-    const before = bundleBaseline?.value ?? null;
-    const after  = bundleResult.totalKb;
-    const delta  = before ? ((after - before) / before) * 100 : 0;
-
-    metrics.push({
-      key:       'bundle_kb',
-      label:     'Bundle Size',
-      before,
-      after,
-      delta,
-      unit:      'KB',
-      threshold: thresholds.bundle_kb,
-      passed:    Math.abs(delta) <= thresholds.bundle_kb || before === null,
+    // 2. Get the SHA of the default branch HEAD
+    const { data: refData } = await octokit.rest.git.getRef({
+      owner, repo: repoName,
+      ref: `heads/${defaultBranch}`,
     });
-  } else {
-    console.log('[analysis] No CI artifact — bundle metric skipped');
-  }
+    const baseSha = refData.object.sha;
 
-  // Query count and API latency are populated by an external test harness in
-  // production. We report the baseline and mark as passed until real values arrive.
-  if (queryBaseline) {
-    metrics.push({ key: 'query_count', label: 'Query Count', before: queryBaseline.value, after: null, delta: 0, unit: 'queries', threshold: thresholds.query_count, passed: true });
-  }
+    // 3. Create (or reset) the setup branch
+    try {
+      await octokit.rest.git.createRef({
+        owner, repo: repoName,
+        ref: `refs/heads/${setupBranch}`,
+        sha: baseSha,
+      });
+    } catch (e) {
+      if (e.status === 422) {
+        // Branch already exists — force-update it
+        await octokit.rest.git.updateRef({
+          owner, repo: repoName,
+          ref: `heads/${setupBranch}`,
+          sha: baseSha,
+          force: true,
+        });
+      } else {
+        throw e;
+      }
+    }
 
-  if (apiBaseline) {
-    metrics.push({ key: 'api_p95_ms', label: 'API p95 Latency', before: apiBaseline.value, after: null, delta: 0, unit: 'ms', threshold: thresholds.api_p95_ms, passed: true });
-  }
+    // 4. Commit the workflow file
+    const workflowContent = Buffer.from(generateWorkflow(buildTool)).toString('base64');
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner, repo: repoName,
+      path:    workflowPath,
+      message: commitMessage,
+      content: workflowContent,
+      branch:  setupBranch,
+    });
 
-  return metrics;
+    // 5. Open the PR
+    const { data: pr } = await octokit.rest.pulls.create({
+      owner,
+      repo:  repoName,
+      title: prTitle,
+      body:  prBody,
+      head:  setupBranch,
+      base:  defaultBranch,
+    });
+
+    console.log(`[onboard] ${owner}/${repoName} — setup PR opened: ${pr.html_url}`);
+
+    // 6. Persist PR URL + status
+    await updateRepoSetup(repoId, {
+      setup_pr_url: pr.html_url,
+      setup_status: 'pr_open',
+    });
+  } catch (err) {
+    console.error(`[onboard] Failed to create setup PR for ${owner}/${repoName}:`, err.message);
+  }
 }
 
-function buildResultsJson(metrics) {
-  return Object.fromEntries(metrics.map(m => [m.key, { before: m.before, after: m.after, delta: m.delta }]));
-}
-
+// ---------------------------------------------------------------------------
+// Metric computation helpers
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 module.exports = {
   app,
   middleware: createNodeMiddleware(app, { path: '/api/github/webhooks' }),
+  handlePR,
+  handleWorkflowRun,
+  runAnalysis,
+  computeMetrics,
+  buildResultsJson,
 };

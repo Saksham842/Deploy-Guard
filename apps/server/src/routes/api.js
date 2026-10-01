@@ -5,9 +5,12 @@ const {
   listRepos,
   getRepoByGithubId,
   getRepoChecks,
+  getRepoTrendWarning,
+  getLatestChunkDiff,
   getThresholds,
   updateThresholds,
   upsertUser,
+  updateRepoSetup,
 } = require('../db');
 
 const router = express.Router();
@@ -123,6 +126,24 @@ router.get('/repos/:owner/:name/checks', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/repos/:owner/:name/setup
+ * Returns the onboarding setup state for a repo.
+ * Used by the dashboard to display the "Setup PR Open →" banner.
+ */
+router.get('/repos/:owner/:name/setup', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, build_tool, setup_pr_url, setup_status FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
+      [req.params.owner, req.params.name]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Repo not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** GET /api/repos/:owner/:name/thresholds — get threshold config */
 router.get('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
   try {
@@ -140,14 +161,22 @@ router.get('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
 /** PUT /api/repos/:owner/:name/thresholds — update threshold config */
 router.put('/repos/:owner/:name/thresholds', requireAuth, async (req, res) => {
   try {
-    const { bundle_kb, query_count, api_p95_ms } = req.body;
+    const { bundle_kb, query_count, api_p95_ms, query_tracking_enabled } = req.body;
     const { rows } = await pool.query(
-      `SELECT id FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
+      `SELECT id, threshold_config FROM repos WHERE owner = $1 AND name = $2 LIMIT 1`,
       [req.params.owner, req.params.name]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Repo not found' });
 
-    const updated = await updateThresholds(rows[0].id, { bundle_kb, query_count, api_p95_ms });
+    const current = rows[0].threshold_config || {};
+    const updatedConfig = {
+      bundle_kb:              bundle_kb !== undefined ? bundle_kb : current.bundle_kb,
+      query_count:            query_count !== undefined ? query_count : current.query_count,
+      api_p95_ms:             api_p95_ms !== undefined ? api_p95_ms : current.api_p95_ms,
+      query_tracking_enabled: query_tracking_enabled !== undefined ? Boolean(query_tracking_enabled) : (current.query_tracking_enabled ?? false),
+    };
+
+    const updated = await updateThresholds(rows[0].id, updatedConfig);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -166,7 +195,8 @@ router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
     const repoId = rows[0].id;
     const repoName = rows[0].name;
 
-    const [totalRes, passRes, failRes, avgRes, worstRes, causeRes, recentCauseRes] = await Promise.all([
+    // Phase 4: trend warning + chunk diff fetched in parallel with existing stats
+    const [totalRes, passRes, failRes, avgRes, worstRes, causeRes, recentCauseRes, trendWarning, chunkDiff] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1`, [repoId]),
       pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1 AND status = 'pass'`, [repoId]),
       pool.query(`SELECT COUNT(*)::int AS count FROM checks WHERE repo_id = $1 AND status = 'fail'`, [repoId]),
@@ -189,6 +219,8 @@ router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
         ORDER BY c.created_at DESC
         LIMIT 5
       `, [repoId]),
+      getRepoTrendWarning(repoId),
+      getLatestChunkDiff(repoId),
     ]);
 
     const totalChecks = totalRes.rows[0].count;
@@ -225,14 +257,23 @@ router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
         worst_regression_kb: worstRegressionKB,
         most_common_cause: mostCommonCause,
         recent_packages_added: recentPackagesAdded,
+        // Phase 4: trend context surfaced to NLP for richer analysis
+        trend_warning: trendWarning.detected
+          ? `Recurring pattern: "${trendWarning.cause_type}" appeared in ${trendWarning.count} recent failing checks.`
+          : null,
       },
       { timeout: 20_000 }
     );
 
-    res.json({ report: data.report });
+    // Return report + Phase 4 structured fields for dashboard rendering
+    res.json({
+      report: data.report,
+      trend_warning: trendWarning,
+      chunk_diff: chunkDiff,
+    });
   } catch (err) {
     console.error('[ai-review] Error:', err.message);
-    res.json({ report: 'AI review temporarily unavailable.' });
+    res.json({ report: 'AI review temporarily unavailable.', trend_warning: null, chunk_diff: [] });
   }
 });
 

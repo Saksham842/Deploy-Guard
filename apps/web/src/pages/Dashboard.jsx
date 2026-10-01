@@ -42,38 +42,38 @@ export default function Dashboard() {
       <div className="animate-[fadeIn_0.4s_ease_forwards]">
 
         {/* Header */}
-        <div className="mb-8 relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white mb-1">
-            Dashboard
+        <div className="mb-6 pb-4 border-b border-[#252B32]">
+          <h1 className="text-xl font-bold tracking-tight text-[#E8EAED] mb-1">
+            Repositories
           </h1>
-          <p className="text-slate-400 text-sm">
-            Performance baseline monitoring across all connected repositories
+          <p className="text-[#8B92A0] text-xs">
+            Performance baseline monitoring across all connected GitHub repositories
           </p>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 relative z-10">
-          <StatCard label="Connected Repos" value={repos.length} icon="📦" />
-          <StatCard label="Passing" value={passCount} icon="✅" color="green" />
-          <StatCard label="Failing" value={failCount} icon="❌" color="red" />
-          <StatCard label="Total Checks" value={totalChecks} icon="🔍" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <StatCard label="Connected Repos" value={repos.length} />
+          <StatCard label="Passing Checks" value={passCount} color="green" />
+          <StatCard label="Failing Checks" value={failCount} color="red" />
+          <StatCard label="Total Checks" value={totalChecks} />
         </div>
 
         {/* Repos grid */}
         {loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="bg-[#0f1629]/75 border border-[#1e2d4a]/80 rounded-xl p-5 backdrop-blur-sm">
-                <div className="animate-pulse bg-[#1e2d4a]/50 h-[18px] w-3/5 rounded-md mb-3" />
-                <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-2/5 rounded-md mb-2" />
-                <div className="animate-pulse bg-[#1e2d4a]/50 h-[14px] w-4/5 rounded-md" />
+              <div key={i} className="bg-[#161A1F] border border-[#252B32] rounded-lg p-4">
+                <div className="skeleton h-4 w-3/5 rounded mb-3" />
+                <div className="skeleton h-3 w-2/5 rounded mb-2" />
+                <div className="skeleton h-3 w-4/5 rounded" />
               </div>
             ))}
           </div>
         )}
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-500 font-medium relative z-10">
+          <div className="bg-[rgba(240,96,90,0.08)] border border-[rgba(240,96,90,0.3)] rounded-lg p-4 text-[#F0605A] text-xs font-mono">
             ⚠️ {error}
           </div>
         )}
@@ -82,26 +82,40 @@ export default function Dashboard() {
           <EmptyState />
         )}
 
-        {!loading && repos.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-            {repos.map(repo => <RepoCard key={repo.id} repo={repo} />)}
-          </div>
-        )}
+        {!loading && repos.length > 0 && (() => {
+          const sorted = [...repos].sort((a, b) => {
+            const aTime = a.last_check ? new Date(a.last_check.created_at).getTime() : 0;
+            const bTime = b.last_check ? new Date(b.last_check.created_at).getTime() : 0;
+            return bTime - aTime;
+          });
+          const mostActiveId = sorted[0]?.id;
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {repos.map(repo => (
+                <RepoCard
+                  key={repo.id}
+                  repo={repo}
+                  isMostActive={repo.id === mostActiveId && Boolean(repo.last_check)}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </>
   );
 }
 
-function StatCard({ label, value, icon, color }) {
-  const valueColorClass = color === 'green' ? 'text-green-500' : color === 'red' ? 'text-red-500' : 'text-white';
+function StatCard({ label, value, color }) {
+  const valueColor = color === 'green' ? 'text-[#3DD68C]' : color === 'red' ? 'text-[#F0605A]' : 'text-[#E8EAED]';
   
   return (
-    <div className="bg-[#0f1629]/75 border border-[#1e2d4a]/85 backdrop-blur-md rounded-xl p-5 shadow-lg flex flex-col justify-between">
-      <div className="text-xs font-semibold text-slate-400 tracking-wider uppercase flex items-center gap-1.5">
-        <span>{icon}</span>
-        <span>{label}</span>
+    <div className="bg-[#161A1F] border border-[#252B32] rounded-lg p-3.5">
+      <div className="text-[10px] font-mono font-semibold text-[#8B92A0] tracking-wider uppercase">
+        {label}
       </div>
-      <div className={`text-3xl font-extrabold mt-2 ${valueColorClass}`}>
+      <div className={`text-2xl font-mono font-bold mt-1 ${valueColor}`}>
         {value}
       </div>
     </div>
@@ -110,17 +124,16 @@ function StatCard({ label, value, icon, color }) {
 
 function EmptyState() {
   return (
-    <div className="text-center py-16 px-4 bg-[#0f1629]/50 border border-[#1e2d4a]/40 rounded-2xl max-w-md mx-auto backdrop-blur-md shadow-xl relative z-10">
-      <div className="text-5xl mb-4">🔭</div>
-      <h2 className="text-lg font-bold text-white mb-2">No repos connected yet</h2>
-      <p className="text-xs text-slate-400 mb-6 max-w-[280px] mx-auto leading-relaxed">
-        Install the DeployGuard GitHub App on your repositories to start tracking performance regressions.
+    <div className="text-center py-14 px-4 bg-[#161A1F] border border-[#252B32] rounded-lg max-w-md mx-auto">
+      <h2 className="text-sm font-semibold text-[#E8EAED] mb-1">No repositories connected yet</h2>
+      <p className="text-xs text-[#8B92A0] mb-5 max-w-[320px] mx-auto leading-relaxed">
+        Install the DeployGuard GitHub App on your repositories to track bundle regressions and automated setup PRs.
       </p>
       <a
         href="https://github.com/apps/deployguard-saksham842"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-[0_4px_12px_rgba(59,130,246,0.2)] hover:-translate-y-0.5 cursor-pointer"
+        className="btn btn-primary text-xs"
       >
         Install GitHub App →
       </a>
@@ -146,7 +159,7 @@ function OnboardingModal({ onClose }) {
             <li>Go to the <a href="https://github.com/apps/deployguard-saksham842" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">DeployGuard Installation Page</a>.</li>
             <li>Click <strong>Install</strong> and choose your target account.</li>
             <li>Select <strong>"Only select repositories"</strong> and pick the repositories you want to monitor.</li>
-            <li>Authorize the requested permissions (Checks: Read & Write, PRs: Read & Write, Actions: Read).</li>
+            <li>Authorize the requested permissions (Contents: Read & Write, Checks: Read & Write, PRs: Read & Write, Actions: Read).</li>
           </ol>
         </div>
       )

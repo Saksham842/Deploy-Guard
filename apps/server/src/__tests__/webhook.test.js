@@ -7,15 +7,20 @@
 
 // Mock all external dependencies before importing webhook
 jest.mock('../db', () => ({
-  getOrCreateRepo:  jest.fn(),
-  getBaseline:      jest.fn(),
-  upsertBaseline:   jest.fn(),
-  saveCheck:        jest.fn(),
-  getThresholds:    jest.fn(),
+  pool:                 { query: jest.fn().mockResolvedValue({ rows: [] }) },
+  getOrCreateRepo:      jest.fn(),
+  getBaseline:          jest.fn(),
+  upsertBaseline:       jest.fn(),
+  saveCheck:            jest.fn(),
+  getThresholds:        jest.fn(),
+  getCheckByDeliveryId: jest.fn(),
+  getCheckByRepoPrSha:  jest.fn(),
+  updateRepoSetup:      jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('../analysers/bundle', () => ({
-  analyseBundle: jest.fn(),
+  analyseBundle:    jest.fn(),
+  computeChunkDiff: jest.fn().mockReturnValue([]),
 }));
 
 jest.mock('../analysers/packageDiff', () => ({

@@ -1,52 +1,69 @@
 # 🛡️ DeployGuard
 
-> **Automated performance quality gates & AI-powered regression analysis for Pull Requests.**
-> 
-> DeployGuard is a full-stack, enterprise-grade GitHub App that detects and blocks performance regressions (bundle size bloat, DB query regressions, and API latency spikes) *before* they hit production. It posts native GitHub Check Runs and markdown analysis comments directly on PRs, complete with NLP-powered root-cause classification and Groq-powered AI explanations.
+> **Automated performance quality gates, multi-bundler tracking, and AI-powered regression analysis for Pull Requests.**
+>
+> DeployGuard is a full-stack, enterprise-grade GitHub App that detects and blocks performance regressions (bundle size bloat, database N+1 query regressions, and API latency spikes) *before* they hit production. It automatically opens zero-configuration setup PRs for new repos, generates native GitHub Check Runs and rich PR comments, identifies recurring regression patterns, and provides visual chunk-level breakdowns with Groq-powered AI explanations.
+
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://python.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%2B-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA%203.1-F55036?logo=groq&logoColor=white)](https://console.groq.com/)
 
 ---
 
-## 🚀 Why This Project Matters (The Core Problem)
+## 🚀 Key Highlights & Capabilities
 
-In modern web development, performance regressions typically slip into production silently. A developer imports a heavy UI package (like Moment.js or Three.js) or writes an unoptimized database query, and the issue goes unnoticed until users complain about slow loading times, or cloud hosting costs skyrocket.
-
-DeployGuard solves this by **shifting performance analysis left** (directly into the developer's pull request workflow):
-* **Protects Core Web Vitals:** Blocks PRs that exceed maximum allowable bundle size increases to maintain page load speed and SEO rankings.
-* **Reduces Database/API Load:** Prevents N+1 queries, full table scans, or latency-inducing sync operations from merging.
-* **Automates Cause Resolution:** Instead of forcing developers to manually run profiles to find why a bundle grew, DeployGuard classifies the cause (e.g. upgraded dependencies, static assets, refactoring) and generates copy-pasteable fix commands or code suggestions.
+- **⚡ Zero-Friction Onboarding** — Installing the GitHub App automatically detects your build tool (`Vite`, `Next.js`, `Webpack`, `Create React App`) and creates a ready-to-merge setup PR (`deployguard/setup`) containing the exact GitHub Actions workflow needed.
+- **📦 Multi-Bundler Support** — Unified parsing engine normalizes build manifests from Vite (`dist/assets`), Next.js (`.next/build-manifest.json`), and Webpack (`stats.json`) into consistent chunk metrics.
+- **🔍 Real Database Query Regression Guard** — Detects N+1 queries, unindexed lookups, and unbounded fetch loops by ingesting test-suite query counts via `@deployguard/query-counter` or lightweight ORM middleware (Prisma, TypeORM, Drizzle).
+- **🔁 Webhook Idempotency & Resilient Pipeline** — Database constraints (`uniq_repo_pr_sha`) and `x-github-delivery` deduplication prevent race conditions. Artifact downloads feature exponential retry backoff (250ms, 1s, 4s) to tolerate GitHub API availability delays.
+- **📊 Visual Chunk Diff Breakdown** — Pinpoints the top 5 chunks with the highest size deltas between PR head and base commits, rendered as horizontal visual bar charts directly inside the dashboard.
+- **⚠️ Proactive Trend Warnings** — Historical pattern analyzer flags recurring regression causes across recent failing checks (e.g. flagging repeated dependency additions or unpaginated queries).
+- **🤖 3-Tier NLP & Dual-Path AI Diagnostics** — Commits are classified by a local SentenceTransformer model (<50ms, Tier 1) with Groq LLaMA 3.1-8b fallback (Tier 2). Actionable markdown explanations and copy-pasteable fix commands are posted directly onto PRs.
+- **💻 Developer-Grade UI** — Built on a high-contrast near-black technical token system (`#0D0F12`, `#161A1F`, `#252B32`), signal green/red pass/fail indicators, expandable check detail rows, and functional monospace typography.
 
 ---
 
-## 🏗️ Architectural Overview
+## 🏗️ Architecture Overview
 
-DeployGuard is designed using a **decentralized build pattern** to guarantee security, scalability, and zero compute costs for compilation:
+DeployGuard uses a **decentralized measurement pattern** to guarantee security, scalability, and zero compute overhead:
 
 ```
-[ Developer PR ] ────▶ [ GitHub Actions Runner ] ────▶ [ DeployGuard Webhook ]
-                             (Builds & Measures)             (NLP Analysis & AI Review)
-                                     │                                  │
-                                     ▼                                  ▼
-                            (Uploads bundle-stats)           (Posts PR Checks & Comments)
+[ Developer opens PR / pushes code ]
+        │
+        ▼
+[ GitHub Actions Runner ]  ── builds app + runs tests ──▶ uploads bundle-stats artifact
+        │                                                 (stats.json + query-stats.json)
+        │  workflow_run.completed webhook
+        ▼
+[ Express.js Webhook Server ]  ── downloads artifact with backoff ──▶ normalizes metrics
+        │
+        ├──▶ [ PostgreSQL ]       (stores repos, baselines, checks, causes, trends)
+        │
+        └──▶ [ FastAPI NLP Service ]
+                    │
+                    ├── Local SentenceTransformer classifier  (<50 ms, Tier 1)
+                    ├── Groq LLaMA 3.1-8b fallback           (~200 ms, Tier 2)
+                    └── Graceful degradation                  (Tier 3)
+                    │
+                    ▼  Structured Explanation & Summaries
+        │
+        ▼
+[ GitHub Check Run + PR Comment ] posted directly back to the Pull Request
+        │
+        ▼
+[ React 18 Technical Dashboard ] — visual chunk diffs, trend graphs, threshold gates
 ```
 
-The system is split into three main services:
+### Service Map
 
-### 1. 🛡️ Express.js Web Server Backend (`apps/server`)
-The backend orchestrates the integration, database storage, and webhook processing:
-* **Webhook Ingestion:** Authenticates cryptographic payloads from GitHub App webhooks.
-* **PR Analysis Flow:** On a new PR, it schedules a pending GitHub Check. When the Action runner completes, it fetches the artifact ZIP, parses the metadata `stats.json`, and triggers package diffs and commit classifiers.
-* **Dashboard API:** Serves repo history, threshold configurations, and OAuth user sessions.
-
-### 2. 🤖 FastAPI NLP & AI Service (`apps/nlp`)
-A dedicated Python service responsible for semantic commit classification and Groq LLM pipelines:
-* **ML Classifier:** Uses local sentence embeddings (`all-MiniLM-L6-v2`) and a trained classification model to categorize commit messages.
-* **AI Fallback & Generator:** Uses Groq's API (`llama-3.1-8b-instant`) to classify ambiguous commit messages and generate markdown analysis explanations.
-
-### 3. 💻 React Dashboard (`apps/web`)
-A modern, responsive user interface designed with rich aesthetics:
-* **Real-time Metrics:** Displays a repository directory containing check metrics (passes/fails/totals) and historical charts.
-* **Visual Gates Control:** Allows developers to customize performance thresholds (e.g. allow up to +15 KB bundle size growth) via visual slider inputs.
-* **AI Reports:** Displays structured health reports (Strengths, Risks, and Recommendations) generated automatically by Groq.
+| Service | Stack | Port | Responsibility |
+|---------|-------|------|----------------|
+| `apps/server` | Node.js 20 · Express 4 · @octokit/app | `3000` | Webhook ingestion, tool detection, auto-PRs, DB, OAuth |
+| `apps/nlp` | Python 3.11 · FastAPI · SentenceTransformers | `8000` | ML commit classification, Groq LLaMA 3.1 explanations |
+| `apps/web` | React 18 · Vite · Recharts · Tailwind CSS | `5173` | Developer dashboard, visual chunk diffs, threshold controls |
 
 ---
 
@@ -57,77 +74,91 @@ Deploy-Guard/
 │
 ├── .github/
 │   └── workflows/
-│       └── bundle-analysis.yml          # DeployGuard's own CI — builds the React dashboard
-│                                        # and uploads stats.json on every PR and main push
+│       └── bundle-analysis.yml          # DeployGuard's self-monitoring CI & test pipeline
 │
 ├── apps/
 │   │
 │   ├── server/                          # Node.js · Express · @octokit/app
+│   │   ├── index.js                     # Server bootstrap & CORS
+│   │   ├── Dockerfile                   # Production container
+│   │   ├── package.json
+│   │   ├── test/
+│   │   │   └── pipeline.test.js         # End-to-end smoke test (PR open → workflow completed)
 │   │   └── src/
+│   │       ├── webhook.js               # Webhook event orchestrator (PR, workflow_run, installation)
+│   │       ├── detect.js                # Automatic build tool detector (Vite, Next.js, Webpack, CRA)
+│   │       ├── workflowTemplates.js     # Tool-specific GitHub Actions workflow generator
+│   │       ├── metrics.js               # Pass/fail threshold and delta computation
+│   │       ├── comment.js               # Markdown PR comment builder
+│   │       ├── db.js                    # PostgreSQL pool, queries, trends, auto-migrations
 │   │       ├── analysers/
-│   │       │   ├── bundle.js            # Downloads the CI artifact ZIP via GitHub API,
-│   │       │   │                        # parses stats.json, and returns totalKb
-│   │       │   └── packageDiff.js       # Diffs package.json between base and head SHA
-│   │       │                            # to detect newly added / removed dependencies
+│   │       │   ├── bundle.js            # Multi-format artifact parser & computeChunkDiff
+│   │       │   └── packageDiff.js       # package.json diffing between base and head SHA
 │   │       ├── nlp/
-│   │       │   └── client.js            # HTTP client for the FastAPI NLP microservice
+│   │       │   └── client.js            # Client for the FastAPI NLP service
 │   │       ├── routes/
-│   │       │   └── api.js               # REST API — repos, checks, thresholds, AI review,
-│   │       │                            # and GitHub OAuth callback
+│   │       │   └── api.js               # REST routes for repos, checks, thresholds, setup status
 │   │       ├── utils/
-│   │       │   └── groqExplain.js       # AI explanation client — tries NLP service first,
-│   │       │                            # falls back to calling Groq directly from Node
-│   │       ├── __tests__/
-│   │       │   └── webhook.test.js      # Unit tests for webhook pipeline logic
-│   │       ├── comment.js               # Builds the markdown PR comment body
-│   │       ├── db.js                    # All PostgreSQL queries (repos, baselines, checks)
-│   │       └── webhook.js               # GitHub App event handlers — the core pipeline
+│   │       │   └── groqExplain.js       # Dual-path Groq AI client with local fallback
+│   │       └── __tests__/
+│   │           ├── bundle.test.js       # Unit tests for multi-format parser & chunk diffing
+│   │           ├── onboarding.test.js   # Unit tests for tool detection & workflow templates
+│   │           ├── queryCount.test.js   # Unit tests for query_count metric delta computation
+│   │           └── webhook.test.js      # Webhook handling unit tests
 │   │
-│   ├── nlp/                             # Python · FastAPI · SentenceTransformers · Groq
-│   │   ├── ai_features.py               # explain_regression(), review_repo(), summarize_pass()
-│   │   ├── groq_client.py               # Shared async Groq API wrapper (call_groq)
-│   │   ├── main.py                      # FastAPI app + /classify /explain /summarize /review
-│   │   ├── train_v2.py                  # Trains the SentenceTransformer commit classifier
+│   ├── nlp/                             # Python 3.11 · FastAPI · SentenceTransformers · Groq
+│   │   ├── main.py                      # FastAPI routes (/classify, /explain, /summarize, /review)
+│   │   ├── ai_features.py               # Groq prompts for regressions, summaries, and reviews
+│   │   ├── groq_client.py               # Shared async Groq API client
+│   │   ├── train_v2.py                  # Trains SentenceTransformer model (incl. query regressions)
+│   │   ├── model_v2.pkl                 # Baked serialized model
 │   │   ├── requirements.txt
-│   │   └── Dockerfile
+│   │   └── Dockerfile                   # Production container
 │   │
-│   └── web/                             # React · Vite · Recharts · Tailwind
-│       ├── scripts/
-│       │   └── generate-stats.mjs       # Post-build script — scans dist/ and writes stats.json
-│       └── src/
-│           ├── components/
-│           │   ├── AIReviewCard.jsx      # Renders the Groq health review panel
-│           │   ├── Badge.jsx             # Status badge (pass / fail / neutral)
-│           │   ├── CheckRow.jsx          # Single check entry in the history table
-│           │   ├── MetricChart.jsx       # Recharts line chart for bundle size history
-│           │   ├── Navbar.jsx            # Top navigation with OAuth user state
-│           │   ├── ParticleBackground.jsx # Animated canvas particle effect
-│           │   └── RepoCard.jsx          # Repository summary card with delta indicators
-│           ├── pages/
-│           │   ├── AuthCallback.jsx      # Handles GitHub OAuth redirect → stores token
-│           │   ├── Dashboard.jsx         # Main view — repo list + onboarding modal
-│           │   ├── Docs.jsx              # In-app documentation page
-│           │   ├── Login.jsx             # Landing / login page
-│           │   ├── RepoDetail.jsx        # Per-repo check history and threshold settings
-│           │   └── Settings.jsx          # Threshold configuration sliders
-│           ├── api.js                    # Axios wrapper for all backend API calls
-│           └── index.css                 # Global styles + design tokens
+│   └── web/                             # React 18 · Vite · Recharts · Tailwind CSS
+│       ├── index.html
+│       ├── vite.config.js
+│       ├── src/
+│       │   ├── App.jsx                  # Application router
+│       │   ├── api.js                   # API client
+│       │   ├── index.css                # Technical design token system & hairline panels
+│       │   ├── components/
+│       │   │   ├── AIReviewCard.jsx     # AI health review with visual chunk diff (Recharts BarChart)
+│       │   │   ├── Badge.jsx            # Technical signal pass/fail badge
+│       │   │   ├── CheckRow.jsx         # Expandable row with semantic status stripe
+│       │   │   ├── MetricChart.jsx      # Technical dark Recharts trendline with baseline markers
+│       │   │   ├── Navbar.jsx           # Monospace user nav & repository links
+│       │   │   ├── ParticleBackground.jsx # Minimalist technical coordinate grid background
+│       │   │   └── RepoCard.jsx         # Flat panel card with active focal point indicator
+│       │   └── pages/
+│       │       ├── Dashboard.jsx        # Repository list, setup banners, active repository focus
+│       │       ├── RepoDetail.jsx       # Hero trendline, check history table, chunk breakdown
+│       │       ├── Settings.jsx         # Threshold configuration UI
+│       │       ├── Login.jsx            # Landing page with GitHub OAuth
+│       │       ├── Docs.jsx             # In-app reference & setup documentation
+│       │       └── AuthCallback.jsx     # OAuth redirect handler
+│       └── dist/                        # Production build bundle
 │
 ├── db/
 │   └── migrations/
-│       └── 001_initial.sql              # Full PostgreSQL schema (repos, baselines,
-│                                        # checks, regression_causes, users)
+│       ├── 001_initial.sql              # Base schema (repos, baselines, checks, causes, users)
+│       ├── 002_idempotency.sql          # Unique constraints and delivery ID indexing
+│       ├── 003_onboarding.sql           # Build tool and setup PR tracking columns
+│       └── 004_query_tracking.sql       # Query tracking enabled threshold configuration
 │
 ├── docs/
-│   └── onboarding.md                    # Step-by-step integration guide for tenant repos
+│   ├── onboarding.md                    # Manual setup workflow documentation
+│   └── query-tracking.md                # ORM integration guide for query count tracking
 │
-├── .env.example                         # Environment variable reference with descriptions
-├── package.json                         # npm workspaces root — runs all apps concurrently
-├── render.yaml                          # Render.com deployment config for server + web
-└── README.md
+├── package.json                         # npm workspaces root
+└── render.yaml                          # Render deployment configuration
 ```
 
-## 💾 Database Schema Design
+---
+
+## 💾 Database Schema
+
+The server self-migrates on boot (`db.js` auto-creates tables and idempotent constraints). The `db/migrations/` SQL files serve as formal versioned references:
 
 ```mermaid
 erDiagram
@@ -142,6 +173,9 @@ erDiagram
         text owner
         text name
         bigint install_id
+        text build_tool
+        text setup_pr_url
+        text setup_status
         jsonb threshold_config
         timestamptz created_at
     }
@@ -161,6 +195,7 @@ erDiagram
         text head_sha
         text base_sha
         text status
+        text github_delivery_id
         jsonb results
         timestamptz created_at
     }
@@ -182,105 +217,237 @@ erDiagram
     }
 ```
 
-* **`repos`**: Tracks connected repositories, metadata, and custom threshold gate limits.
-* **`baselines`**: Maintains size, query, and API latency measurements per branch to evaluate regressions.
-* **`checks`**: Tracks pull request evaluations (statuses, comparisons, and timestamps).
-* **`regression_causes`**: Links NLP model classifications and confidence scores to checks.
-* **`users`**: Manages developer credentials and access tokens obtained via GitHub OAuth.
+### Table Descriptions
+
+| Table | Purpose |
+|-------|---------|
+| `repos` | Repository metadata, detected `build_tool`, automated `setup_pr_url`, `setup_status` (`pending`, `pr_open`, `merged`), and threshold configuration JSONB |
+| `baselines` | Per-branch recorded snapshots of `bundle_kb`, `query_count`, and `api_p95_ms` — the ground-truth values all PRs are evaluated against |
+| `checks` | Analysis runs per PR; enforces uniqueness on `(repo_id, pr_number, head_sha)` and tracks `github_delivery_id` for idempotency |
+| `regression_causes` | NLP classification output — cause type (e.g. `new_dependency`, `query_regression`, `asset_added`) with confidence rating |
+| `users` | Authenticated users via GitHub OAuth |
 
 ---
 
-## 💡 Key Engineering Decisions & Trade-Offs
+## 🔢 Database Query Count Tracking Contract
 
-### 1. Zero-Configuration Build Scanner
-* **Decision:** We use an inline Node.js directory-scanning script inside the Actions runner rather than forcing developers to configure bundler plugins (like `rollup-plugin-visualizer`) in their `vite.config.js`.
-* **Why:** Requiring manual bundler config edits makes onboarding complex and error-prone. By scanning the `dist/` directory directly, DeployGuard works instantly out of the box for any standard bundler (Vite, Webpack, Rollup) without package installations.
+DeployGuard supports tracking database query frequencies during test suites to catch N+1 queries before merge:
 
-### 2. Cascaded Hybrid NLP Classification Engine
-* **Decision:** Commits are classified using a 3-tier cascade pipeline:
-  1. **Tier 1 (Local Model):** Classifies the message using SentenceTransformer embeddings ($<50$ms latency, zero cost).
-  2. **Tier 2 (Groq LLM Fallback):** If local model confidence is low ($<0.55$), it calls the Groq API ($~200$ms).
-  3. **Tier 3 (Graceful Fallback):** If the LLM is rate-limited or offline, it falls back to the top local prediction.
-* **Why:** Avoids calling expensive LLM APIs on every git commit, resulting in massive cost savings and low latency while preserving high classification accuracy.
+### Producer Contract
+Tenant test runners output `dist/query-stats.json` alongside `dist/stats.json`:
+```json
+{
+  "queryCount": 42
+}
+```
+
+### Prisma Example Setup
+Add this to your Jest / Vitest test setup file (`setupTests.ts`):
+```typescript
+import fs from 'fs';
+import { prisma } from './prismaClient';
+
+let queryCount = 0;
+
+prisma.$use(async (params, next) => {
+  queryCount++;
+  return next(params);
+});
+
+afterAll(() => {
+  if (!fs.existsSync('dist')) fs.mkdirSync('dist', { recursive: true });
+  fs.writeFileSync('dist/query-stats.json', JSON.stringify({ queryCount }));
+});
+```
+
+Upload both files in the same `bundle-stats` artifact step:
+```yaml
+- name: Upload bundle & query stats
+  uses: actions/upload-artifact@v4
+  with:
+    name: bundle-stats
+    path: dist/
+```
+
+Enable query tracking per repository in the **Settings** view or via threshold configuration (`query_tracking_enabled: true`).
 
 ---
 
-## 🛠️ Key Technical Challenges Solved (My Contributions)
+## 🤖 NLP Pipeline & Cause Classes
 
-During development, I designed and resolved several critical system bugs and features:
+The commit classification pipeline categorizes commit messages into semantic root causes:
 
-* **Direct Push Baseline Update Fix:** Solved a critical bug in `webhook.js` where direct pushes or PR merges to `main` or `master` (which do not have open PRs) were skipped entirely. This left the baselines database table empty, causing all checks to report `n/a (first run)`. Added direct branch triggers to record base metrics.
-* **Monorepo & Subfolder Support:** Configured the setup templates to support repositories that split codebase folders (such as `frontend/` and `backend/`). Integrated step-scoped `working-directory` execution and turned off default `setup-node` caching to prevent crashes on subfolder projects missing root-level lockfiles.
-* **Target Branch Fallback Engine:** Introduced baseline fallback matching. If a PR is opened against a feature branch that hasn't had a baseline recorded in the database, DeployGuard automatically falls back to comparing against the default branch (`main` or `master`) baseline instead of displaying `n/a`.
-* **FastAPI Local Environment Loading:** Resolved an issue where the NLP microservice failed to load the `GROQ_API_KEY` from the local `.env` file when started via standard Uvicorn commands (disabling LLM-based features). Integrated `python-dotenv` to load local configurations cleanly at startup.
-* **Zero-Escaping Node script:** Rewrote the inline Node.js bundle scanner to use standard string manipulation (`path.extname` and `.split`/`.join`) instead of regex and backslashes, ensuring that the script executes cleanly across `bash`, `cmd`, or `sh` shells without getting parsed incorrectly by GitHub Actions runners.
-* **Cross-Fork PR API Fallback:** Fixed a bug where external contributor PRs (originating from forks) failed because GitHub restricts the payload `workflow_run.pull_requests` for security. Added an API callback fallback that queries open pulls on the target head SHA.
-* **CSS Transform Positioning Fix:** Resolved an issue where the React onboarding modal was pushed to the bottom of the screen. Solved this by restructuring the React DOM hierarchy, rendering the fixed modal outside the parent `transform` container which was overriding the browser viewport layout.
+```
+Commit messages  ──▶  Tier 1: Local SentenceTransformer (all-MiniLM-L6-v2)
+                               Latency: <50 ms  |  Cost: $0
+                               ↓ confidence < 0.55
+                       Tier 2: Groq LLaMA 3.1-8b-instant
+                               Latency: ~200 ms  |  Cost: minimal
+                               ↓ rate-limited / offline
+                       Tier 3: Top local prediction (graceful degradation)
+```
+
+**10 Semantic Commit Classes:**
+- `new_dependency`: A new package was added
+- `dependency_upgrade`: An existing package was upgraded
+- `query_regression`: N+1 query patterns, missing database indexes, unpaginated fetches
+- `latency_spike`: Blocking synchronous I/O or heavy computation in request paths
+- `asset_added`: Heavy static assets (images, fonts, PDFs, icons) bundled
+- `feature`: New component or product feature
+- `refactor`: Structural code cleanup with no functional change
+- `fix`: Bug fix commits
+- `test`: Test harness additions
+- `chore` / `docs`: Config or documentation changes
+
+---
+
+## 🔌 API Reference
+
+### Backend API (`apps/server` — Express, Port `3000`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/auth/github` | — | Initiates GitHub OAuth authentication |
+| `GET` | `/auth/github/callback` | — | Exchanges code for access token, stores user, redirects to web |
+| `GET` | `/api/repos` | Bearer | Lists all connected repositories with latest check and setup state |
+| `GET` | `/api/repos/:owner/:name/checks` | Bearer | Retrieves check runs with regression causes for a repo |
+| `GET` | `/api/repos/:owner/:name/setup` | Bearer | Returns automated setup PR URL and onboarding status |
+| `GET` | `/api/repos/:owner/:name/thresholds` | Bearer | Returns repository threshold configuration gates |
+| `PUT` | `/api/repos/:owner/:name/thresholds` | Bearer | Updates threshold limits and query tracking toggles |
+| `GET` | `/api/repos/:owner/:name/ai-review` | Bearer | Returns Groq AI health report, recurring trend warnings, and chunk diffs |
+| `POST` | `/api/github/webhooks` | HMAC | Signed GitHub App webhook receiver |
+
+### NLP Service (`apps/nlp` — FastAPI, Port `8000`)
+
+| Method | Endpoint | Request Body | Description |
+|--------|----------|--------------|-------------|
+| `POST` | `/classify` | `{ message: string }` | Classifies a single commit message |
+| `POST` | `/classify/batch` | `{ messages: string[] }` | Classifies multiple commit messages |
+| `POST` | `/explain` | `{ bundle_delta_kb, added_packages, ... }` | Generates a 3-part regression explanation |
+| `POST` | `/summarize` | `{ bundle_delta_kb, ... }` | Generates positive check summary for passing PRs |
+| `POST` | `/review` | `{ repo_name, trend_warning, ... }` | Generates structured project health review |
+| `GET`  | `/health` | — | Health check probe |
 
 ---
 
 ## 🚀 Getting Started (Local Development)
 
 ### Prerequisites
-* Node.js 20+
-* Python 3.11+
-* PostgreSQL 15+ (Local or Neon)
-* A [GitHub App registration](https://docs.github.com/en/apps) with Webhook + Checks permissions.
+- **Node.js** 20+
+- **Python** 3.11+
+- **PostgreSQL** 15+ (local or [Neon](https://neon.tech))
+- **GitHub App** with `Checks: write`, `Pull requests: write`, `Contents: write`, `Actions: read` permissions.
 
 ### 1. Installation
+
 ```bash
-# Clone the repository
 git clone https://github.com/Saksham842/Deploy-Guard.git
 cd Deploy-Guard
 
-# Install root, server, and web dependencies (npm workspaces)
+# Install root workspaces (server + web)
 npm install
 
-# Setup python environment and train the NLP models
+# Setup NLP service virtual environment
 cd apps/nlp
 python -m venv venv
-# Activate virtualenv and install packages
-source venv/bin/activate  # Or .\venv\Scripts\activate on Windows
+
+# Activate virtualenv
+source venv/bin/activate       # macOS / Linux
+# .\venv\Scripts\activate    # Windows PowerShell
+
 pip install -r requirements.txt
-python train_v2.py
+python train_v2.py            # Generates local classification model
+cd ../..
 ```
 
-### 2. Configure Environment
-Create a `.env` file at the root of the project:
-```bash
-cp .env.example .env
-```
-Provide your database connection strings, GitHub App credentials, and base64-encoded private key PEM file.
+### 2. Environment Variables
 
-### 3. Start Development Servers
-Run the backend and dashboard concurrently:
+Create `.env` in the root directory based on `.env.example`:
+
+```ini
+PORT=3000
+DATABASE_URL=postgres://user:password@localhost:5432/deployguard
+GITHUB_APP_ID=123456
+GITHUB_CLIENT_ID=Iv1.your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+GITHUB_PRIVATE_KEY=base64_encoded_private_key
+NLP_SERVICE_URL=http://localhost:8000
+GROQ_API_KEY=gsk_your_groq_api_key
+FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:3000
+```
+
+Create `apps/web/.env`:
+```ini
+VITE_API_URL=http://localhost:3000
+VITE_GITHUB_CLIENT_ID=Iv1.your_client_id
+```
+
+### 3. Run Development Servers
+
+**Terminal 1 — Backend & Frontend:**
 ```bash
-# In the root workspace:
 npm run dev
 ```
-Start the NLP FastAPI microservice:
+
+**Terminal 2 — NLP Microservice:**
 ```bash
-# In apps/nlp:
+cd apps/nlp
+source venv/bin/activate
 uvicorn main:app --reload --port 8000
+```
+
+- **Dashboard:** `http://localhost:5173`
+- **Server API:** `http://localhost:3000`
+- **NLP Service:** `http://localhost:8000`
+- **NLP Swagger Docs:** `http://localhost:8000/docs`
+
+### 4. Running Tests
+
+```bash
+# Run backend test suite (unit + pipeline smoke tests)
+npm test --workspace=@deployguard/server
+
+# Build production frontend bundle
+npm run build --workspace=@deployguard/web
 ```
 
 ---
 
-## 🔌 API Documentation
+## 🧪 Validation & Test Suite
 
-### NLP Microservice (`apps/nlp` — FastAPI)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/classify` | Evaluates commit message categories (Local ML $\rightarrow$ Groq LLM) |
-| `POST` | `/explain` | Generates PR markdown explanation for regressions (Groq) |
-| `POST` | `/review` | Compiles aggregated health analysis metrics (Groq) |
+DeployGuard includes automated tests covering all critical pipeline components:
 
-### Backend API (`apps/server` — Express)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/repos` | Lists connected repositories for the authenticated user |
-| `GET`  | `/api/repos/:owner/:name/checks` | Retrieves the history of performance check runs |
-| `PUT`  | `/api/repos/:owner/:name/thresholds` | Updates size/latency alert thresholds |
+- [`bundle.test.js`](file:///c:/Users/acer/Desktop/DATA/new%20project/apps/server/src/__tests__/bundle.test.js): Validates ZIP extraction, artifact retry backoff, multi-format normalization (Vite, Next.js, Webpack), and top-5 chunk delta calculations.
+- [`pipeline.test.js`](file:///c:/Users/acer/Desktop/DATA/new%20project/apps/server/test/pipeline.test.js): End-to-end smoke test validating `pull_request.opened` → `workflow_run.completed` execution and webhook idempotency deduplication.
+- [`queryCount.test.js`](file:///c:/Users/acer/Desktop/DATA/new%20project/apps/server/src/__tests__/queryCount.test.js): Validates active query delta computation and threshold evaluation.
+- [`onboarding.test.js`](file:///c:/Users/acer/Desktop/DATA/new%20project/apps/server/src/__tests__/onboarding.test.js): Validates automatic build tool detection and YAML workflow generation.
+- [`webhook.test.js`](file:///c:/Users/acer/Desktop/DATA/new%20project/apps/server/src/__tests__/webhook.test.js): Validates webhook event handling and database integration.
+
+---
+
+## 📝 Project Status Matrix
+
+| Component / Feature | Milestone | Status |
+|---------------------|-----------|:------:|
+| Webhook Idempotency & Delivery Deduplication | Phase 0 | ✅ Complete |
+| Artifact Download Retry with Exponential Backoff | Phase 0 | ✅ Complete |
+| End-to-End Pipeline Smoke Test | Phase 0 | ✅ Complete |
+| Automatic Build Tool Detection (`detect.js`) | Phase 1 | ✅ Complete |
+| Automated Setup PR Generation (`deployguard/setup`) | Phase 1 | ✅ Complete |
+| Dashboard Setup Status & Action Banners | Phase 1 | ✅ Complete |
+| Multi-Bundler Support (Vite, Next.js, Webpack) | Phase 2 | ✅ Complete |
+| Database `query_count` Metric Calculation | Phase 3 | ✅ Complete |
+| Prisma / ORM Test Runner Contract | Phase 3 | ✅ Complete |
+| NLP Classifier Retraining for Query Regressions | Phase 3 | ✅ Complete |
+| Proactive Trend & Recurrence Warning Detection | Phase 4 | ✅ Complete |
+| Visual Chunk Diff Breakdown (Recharts Bar Chart) | Phase 4 | ✅ Complete |
+| Technical Dark Theme & Developer Token System | Phase 5 | ✅ Complete |
+| Semantic Pass/Fail Left Indicator Stripes | Phase 5 | ✅ Complete |
+| Expandable Check Rows with Cause Diagnostics | Phase 5 | ✅ Complete |
+| Differentiated Strengths / Risks / Recommendations AI Cards | Phase 5 | ✅ Complete |
+| Active Focal Point on Repository Directory | Phase 5 | ✅ Complete |
 
 ---
 

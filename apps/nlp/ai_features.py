@@ -115,10 +115,16 @@ async def review_repo(
     worst_regression_kb: float,
     most_common_cause: str,
     recent_packages_added: list[str],
+    trend_warning: str | None = None,
 ) -> str:
     """Generate a structured health review using Groq."""
 
     pass_rate = round((passed_checks / total_checks) * 100) if total_checks > 0 else 0
+
+    trend_line = (
+        f"- ⚠️ Trend warning: {trend_warning}\n"
+        if trend_warning else ""
+    )
 
     user_prompt = (
         f"Project health data for {repo_name}:\n"
@@ -129,7 +135,8 @@ async def review_repo(
         f"- Average bundle size: {avg_bundle_kb} KB\n"
         f"- Worst regression: {worst_regression_kb} KB\n"
         f"- Most common cause: {most_common_cause}\n"
-        f"- Recently added packages: {_fmt_list(recent_packages_added[:20])}\n\n"
+        f"- Recently added packages: {_fmt_list(recent_packages_added[:20])}\n"
+        f"{trend_line}\n"
         "Provide a structured health review for this project."
     )
 

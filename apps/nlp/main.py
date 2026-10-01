@@ -167,6 +167,8 @@ class ReviewRequest(BaseModel):
     worst_regression_kb:   float = 0.0
     most_common_cause:     str = "unknown"
     recent_packages_added: List[str] = []
+    # Phase 4: recurring failure trend surfaced by db.getRepoTrendWarning
+    trend_warning:         Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -460,5 +462,6 @@ async def review(req: ReviewRequest):
         worst_regression_kb=req.worst_regression_kb,
         most_common_cause=req.most_common_cause,
         recent_packages_added=req.recent_packages_added,
+        trend_warning=req.trend_warning,
     )
     return {"report": report}

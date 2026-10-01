@@ -14,7 +14,7 @@ pool.query(`
     owner            TEXT NOT NULL,
     name             TEXT NOT NULL,
     install_id       BIGINT NOT NULL,
-    threshold_config JSONB NOT NULL DEFAULT '{"bundle_kb":10,"query_count":20,"api_p95_ms":200}',
+    threshold_config JSONB NOT NULL DEFAULT '{"bundle_kb":10,"query_count":20,"api_p95_ms":200,"query_tracking_enabled":false}',
     created_at       TIMESTAMPTZ DEFAULT NOW()
   );
 
@@ -30,15 +30,24 @@ pool.query(`
   );
 
   CREATE TABLE IF NOT EXISTS checks (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    repo_id     UUID REFERENCES repos(id) ON DELETE CASCADE,
-    pr_number   INT NOT NULL,
-    head_sha    TEXT NOT NULL,
-    base_sha    TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'pending',
-    results     JSONB,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repo_id            UUID REFERENCES repos(id) ON DELETE CASCADE,
+    pr_number          INT NOT NULL,
+    head_sha           TEXT NOT NULL,
+    base_sha           TEXT NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    results            JSONB,
+    github_delivery_id TEXT,
+    created_at         TIMESTAMPTZ DEFAULT NOW()
   );
+
+  ALTER TABLE checks ADD COLUMN IF NOT EXISTS github_delivery_id TEXT;
+
+  DO $$ BEGIN
+    ALTER TABLE checks ADD CONSTRAINT uniq_repo_pr_sha UNIQUE (repo_id, pr_number, head_sha);
+  EXCEPTION
+    WHEN duplicate_table OR duplicate_object THEN NULL;
+  END $$;
 
   CREATE TABLE IF NOT EXISTS regression_causes (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -61,7 +70,13 @@ pool.query(`
   CREATE INDEX IF NOT EXISTS idx_baselines_repo_branch ON baselines(repo_id, branch);
   CREATE INDEX IF NOT EXISTS idx_checks_repo_pr       ON checks(repo_id, pr_number);
   CREATE INDEX IF NOT EXISTS idx_checks_repo_created  ON checks(repo_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_checks_delivery      ON checks(github_delivery_id);
   CREATE INDEX IF NOT EXISTS idx_causes_check         ON regression_causes(check_id);
+
+  -- Phase 1: onboarding columns (safe to add after initial table creation)
+  ALTER TABLE repos ADD COLUMN IF NOT EXISTS build_tool    TEXT;
+  ALTER TABLE repos ADD COLUMN IF NOT EXISTS setup_pr_url  TEXT;
+  ALTER TABLE repos ADD COLUMN IF NOT EXISTS setup_status  TEXT DEFAULT 'pending';
 `).then(() => {
   console.log('[pg] Database tables initialized successfully.');
 }).catch(err => {
@@ -117,6 +132,25 @@ async function listRepos() {
   return rows;
 }
 
+/**
+ * Update setup onboarding state for a repo.
+ * Called after a setup PR is created or merged.
+ *
+ * @param {string} repoId     - Internal UUID
+ * @param {object} fields     - { build_tool?, setup_pr_url?, setup_status? }
+ */
+async function updateRepoSetup(repoId, fields) {
+  const { build_tool, setup_pr_url, setup_status } = fields;
+  await pool.query(
+    `UPDATE repos
+     SET build_tool   = COALESCE($1, build_tool),
+         setup_pr_url = COALESCE($2, setup_pr_url),
+         setup_status = COALESCE($3, setup_status)
+     WHERE id = $4`,
+    [build_tool ?? null, setup_pr_url ?? null, setup_status ?? null, repoId]
+  );
+}
+
 // ─── Baselines ───────────────────────────────────────────────────────────────
 
 /**
@@ -154,19 +188,27 @@ async function upsertBaseline(repoId, branch, metric, value, commitSha) {
 /**
  * Persist a completed check along with its regression causes.
  * Wraps in a transaction so causes are never orphaned.
+ * Uses ON CONFLICT to remain idempotent on webhook retries.
  */
-async function saveCheck({ repoId, prNumber, headSha, baseSha, status, results, causes = [] }) {
+async function saveCheck({ repoId, prNumber, headSha, baseSha, status, results, causes = [], githubDeliveryId = null }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const { rows: checkRows } = await client.query(
-      `INSERT INTO checks (repo_id, pr_number, head_sha, base_sha, status, results)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO checks (repo_id, pr_number, head_sha, base_sha, status, results, github_delivery_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (repo_id, pr_number, head_sha)
+       DO UPDATE SET status = EXCLUDED.status,
+                     results = EXCLUDED.results,
+                     github_delivery_id = COALESCE(EXCLUDED.github_delivery_id, checks.github_delivery_id)
        RETURNING id`,
-      [repoId, prNumber, headSha, baseSha, status, JSON.stringify(results)]
+      [repoId, prNumber, headSha, baseSha, status, JSON.stringify(results), githubDeliveryId]
     );
     const checkId = checkRows[0].id;
+
+    // Clear previous causes for this check before inserting to prevent duplicates on upsert
+    await client.query('DELETE FROM regression_causes WHERE check_id = $1', [checkId]);
 
     for (const cause of causes) {
       await client.query(
@@ -184,6 +226,29 @@ async function saveCheck({ repoId, prNumber, headSha, baseSha, status, results, 
   } finally {
     client.release();
   }
+}
+
+/**
+ * Fetch a check by its GitHub delivery ID.
+ */
+async function getCheckByDeliveryId(deliveryId) {
+  if (!deliveryId) return null;
+  const { rows } = await pool.query(
+    `SELECT * FROM checks WHERE github_delivery_id = $1 LIMIT 1`,
+    [deliveryId]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Fetch a check by repo, PR number, and head SHA.
+ */
+async function getCheckByRepoPrSha(repoId, prNumber, headSha) {
+  const { rows } = await pool.query(
+    `SELECT * FROM checks WHERE repo_id = $1 AND pr_number = $2 AND head_sha = $3 LIMIT 1`,
+    [repoId, prNumber, headSha]
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -214,6 +279,69 @@ async function getRepoChecks(repoId, limit = 20) {
   return rows;
 }
 
+/**
+ * Trend detection: queries last 10 checks for this repo, checks the last 5 failing checks,
+ * and flags if any cause appears in >= 3 of the last 5 failing checks.
+ */
+async function getRepoTrendWarning(repoId) {
+  const { rows } = await pool.query(
+    `WITH recent_checks AS (
+       SELECT id, status, created_at
+       FROM checks
+       WHERE repo_id = $1
+       ORDER BY created_at DESC
+       LIMIT 10
+     ),
+     recent_fails AS (
+       SELECT id
+       FROM recent_checks
+       WHERE status = 'fail'
+       ORDER BY created_at DESC
+       LIMIT 5
+     )
+     SELECT rc.cause_type, COUNT(*)::int AS count
+     FROM regression_causes rc
+     JOIN recent_fails rf ON rf.id = rc.check_id
+     GROUP BY rc.cause_type
+     HAVING COUNT(*) >= 3
+     ORDER BY count DESC
+     LIMIT 1`,
+    [repoId]
+  );
+
+  if (rows.length > 0) {
+    const { cause_type, count } = rows[0];
+    return {
+      detected: true,
+      cause_type,
+      count,
+      message: `Recurring regression pattern: "${cause_type}" appeared in ${count} of the last failing checks.`,
+    };
+  }
+
+  return {
+    detected: false,
+    cause_type: null,
+    count: 0,
+    message: null,
+  };
+}
+
+/**
+ * Retrieve the most recent chunkDiff stored in checks.results.
+ */
+async function getLatestChunkDiff(repoId) {
+  const { rows } = await pool.query(
+    `SELECT results->'chunkDiff' AS chunk_diff
+     FROM checks
+     WHERE repo_id = $1 AND results ? 'chunkDiff'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [repoId]
+  );
+  return rows[0]?.chunk_diff || [];
+}
+
 // ─── Threshold config ─────────────────────────────────────────────────────────
 
 async function getThresholds(repoId) {
@@ -221,7 +349,7 @@ async function getThresholds(repoId) {
     `SELECT threshold_config FROM repos WHERE id = $1`,
     [repoId]
   );
-  return rows[0]?.threshold_config ?? { bundle_kb: 10, query_count: 20, api_p95_ms: 200 };
+  return rows[0]?.threshold_config ?? { bundle_kb: 10, query_count: 20, api_p95_ms: 200, query_tracking_enabled: false };
 }
 
 async function updateThresholds(repoId, thresholds) {
@@ -261,11 +389,16 @@ module.exports = {
   getOrCreateRepo,
   getRepoByGithubId,
   listRepos,
+  updateRepoSetup,
   getBaseline,
   upsertBaseline,
   saveCheck,
+  getCheckByDeliveryId,
+  getCheckByRepoPrSha,
   updateCheckStatus,
   getRepoChecks,
+  getRepoTrendWarning,
+  getLatestChunkDiff,
   getThresholds,
   updateThresholds,
   upsertUser,

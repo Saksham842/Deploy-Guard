@@ -21,6 +21,7 @@ async function apiFetch(path, options = {}) {
 export const api = {
   getRepos: () => apiFetch('/api/repos'),
   getRepoChecks: (owner, name) => apiFetch(`/api/repos/${owner}/${name}/checks`),
+  getRepoSetup: (owner, name) => apiFetch(`/api/repos/${owner}/${name}/setup`),
   getThresholds:  (owner, name) => apiFetch(`/api/repos/${owner}/${name}/thresholds`),
   updateThresholds: (owner, name, body) =>
     apiFetch(`/api/repos/${owner}/${name}/thresholds`, { method: 'PUT', body: JSON.stringify(body) }),

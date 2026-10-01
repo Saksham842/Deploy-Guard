@@ -28,6 +28,7 @@ DeployGuard uses a **decentralized build pattern** to keep your code secure and 
 1. Go to your **DeployGuard Dashboard** and click **"+ Add Repository"**.
 2. Choose **"Only select repositories"** and select the repository you want to monitor.
 3. Grant the required permissions:
+   * **Contents (Read & Write)**: To automatically create the setup branch, commit `.github/workflows/deployguard.yml`, and open the setup PR on installation.
    * **Checks (Read & Write)**: To create and update quality gate status indicators.
    * **Pull Requests (Read & Write)**: To post regression analysis reports as comments.
    * **Actions (Read)**: To fetch build completion events and artifact download links.

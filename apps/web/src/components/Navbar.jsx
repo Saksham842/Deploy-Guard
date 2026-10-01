@@ -11,52 +11,52 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-[#0f1629]/95 border-b border-[#1e2d4a]/80 px-6 sm:px-8 h-[60px] flex items-center justify-between sticky top-0 z-50 backdrop-blur-md">
+    <nav className="bg-[#161A1F] border-b border-[#252B32] px-6 h-[54px] flex items-center justify-between sticky top-0 z-50">
       
       {/* Brand logo and link */}
       <Link to="/dashboard" className="flex items-center gap-2 no-underline">
-        <span className="text-xl">🛡️</span>
-        <span className="font-extrabold text-sm text-white tracking-tight">
-          Deploy<span className="text-blue-500">Guard</span>
+        <span className="text-lg">🛡️</span>
+        <span className="font-bold text-xs tracking-tight text-[#E8EAED]">
+          Deploy<span className="text-[#4C8DFF]">Guard</span>
         </span>
       </Link>
 
       {/* Nav Actions */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-5">
         <Link
           to="/dashboard?setup=true"
-          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
         >
-          Setup Guide
+          Setup guide
         </Link>
         <Link
           to="/docs"
-          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
         >
-          How it works
+          Documentation
         </Link>
         <Link
           to="/dashboard"
-          className="text-slate-400 hover:text-white no-underline text-xs font-semibold tracking-wide transition-colors"
+          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
         >
-          Dashboard
+          Repositories
         </Link>
         
         {username && (
-          <div className="flex items-center gap-3 pl-3 border-l border-[#1e2d4a]/80">
+          <div className="flex items-center gap-3 pl-3 border-l border-[#252B32]">
             {avatar && (
               <img
                 src={avatar}
                 alt={username}
-                className="w-7 h-7 rounded-full border border-[#1e2d4a]/85"
+                className="w-6 h-6 rounded-full border border-[#252B32]"
               />
             )}
-            <span className="text-slate-400 text-xs font-medium hidden sm:inline">
+            <span className="text-[#8B92A0] text-xs font-mono hidden sm:inline">
               {username}
             </span>
             <button
               onClick={handleLogout}
-              className="px-2.5 py-1.5 border border-[#1e2d4a]/85 hover:border-blue-500/80 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white bg-transparent transition-all hover:bg-[#141d35] cursor-pointer"
+              className="px-2 py-1 border border-[#252B32] hover:border-[#38424E] rounded text-[11px] font-mono text-[#8B92A0] hover:text-[#E8EAED] bg-transparent transition-colors cursor-pointer"
             >
               Sign out
             </button>
