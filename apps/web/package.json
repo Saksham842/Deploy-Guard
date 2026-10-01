@@ -16,9 +16,13 @@
   },
   "dependencies": {
     "axios": "^1.15.2",
+    "framer-motion": "^13.5.0",
+    "gsap": "^3.15.0",
+    "locomotive-scroll": "^5.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.14.2",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "three": "^0.186.1"
   }
 }

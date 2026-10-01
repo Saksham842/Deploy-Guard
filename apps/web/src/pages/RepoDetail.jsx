@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { api } from '../api';
 import MetricChart from '../components/MetricChart';
 import CheckRow from '../components/CheckRow';
 import Badge from '../components/Badge';
 import AIReviewCard from '../components/AIReviewCard';
+import GsapMagnetic from '../components/GsapMagnetic';
 
 export default function RepoDetail() {
   const { owner, name } = useParams();
@@ -41,7 +43,12 @@ export default function RepoDetail() {
   const baselineValue = lastCheck?.results?.bundle_kb?.before ?? undefined;
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       {/* Top Header / Breadcrumb & Actions */}
       <div className="flex items-center justify-between flex-wrap gap-4 border-b border-[#252B32] pb-4">
         <div>
@@ -61,20 +68,24 @@ export default function RepoDetail() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link
-            to={`/repo/${owner}/${name}/settings`}
-            className="btn btn-ghost text-xs"
-          >
-            Configure thresholds
-          </Link>
-          <a
-            href={`https://github.com/${owner}/${name}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-ghost text-xs font-mono"
-          >
-            GitHub ↗
-          </a>
+          <GsapMagnetic strength={0.25}>
+            <Link
+              to={`/repo/${owner}/${name}/settings`}
+              className="btn btn-ghost text-xs"
+            >
+              Configure thresholds
+            </Link>
+          </GsapMagnetic>
+          <GsapMagnetic strength={0.25}>
+            <a
+              href={`https://github.com/${owner}/${name}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost text-xs font-mono"
+            >
+              GitHub ↗
+            </a>
+          </GsapMagnetic>
         </div>
       </div>
 
@@ -191,7 +202,7 @@ export default function RepoDetail() {
       <div>
         <AIReviewCard repoId={{ owner, name }} />
       </div>
-    </div>
+    </motion.div>
   );
 }
 

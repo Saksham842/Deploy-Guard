@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api';
+import GsapMagnetic from './GsapMagnetic';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -78,12 +80,14 @@ export default function AIReviewCard({ repoId }) {
           <p className="text-[#8B92A0] text-xs mb-3">
             Run an on-demand audit to evaluate project performance health and recurring patterns.
           </p>
-          <button
-            onClick={handleGenerate}
-            className="btn btn-primary text-xs"
-          >
-            Run Health Review
-          </button>
+          <GsapMagnetic strength={0.3}>
+            <button
+              onClick={handleGenerate}
+              className="btn btn-primary text-xs shadow-sm hover:shadow-[0_0_20px_rgba(76,141,255,0.25)]"
+            >
+              Run Health Review
+            </button>
+          </GsapMagnetic>
         </div>
       )}
 
@@ -97,7 +101,12 @@ export default function AIReviewCard({ repoId }) {
       )}
 
       {report && !loading && (
-        <div className="space-y-4">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-4"
+        >
           {/* Trend Warning Banner */}
           {trendWarning?.detected && (
             <div className="bg-[rgba(245,166,35,0.06)] border border-[rgba(245,166,35,0.3)] rounded-md p-3 flex items-start gap-2.5">
@@ -221,15 +230,17 @@ export default function AIReviewCard({ repoId }) {
           )}
 
           <div className="pt-2 flex justify-end">
-            <button
-              onClick={handleGenerate}
-              className="btn btn-ghost text-xs"
-              disabled={loading}
-            >
-              Regenerate Review
-            </button>
+            <GsapMagnetic strength={0.2}>
+              <button
+                onClick={handleGenerate}
+                className="btn btn-ghost text-xs"
+                disabled={loading}
+              >
+                Regenerate Review
+              </button>
+            </GsapMagnetic>
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

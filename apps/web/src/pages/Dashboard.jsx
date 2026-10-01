@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api';
 import RepoCard from '../components/RepoCard';
+import GsapMagnetic from '../components/GsapMagnetic';
 import { useSearchParams } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -24,16 +26,33 @@ export default function Dashboard() {
   const failCount = repos.filter(r => r.last_check?.status === 'fail').length;
   const totalChecks = repos.reduce((acc, r) => acc + (r.check_count || 0), 0);
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.06,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 12 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
+  };
+
   return (
     <>
-      {showOnboarding && (
-        <OnboardingModal
-          onClose={() => {
-            setShowOnboarding(false);
-            setSearchParams({}); // Clear ?setup=true from URL
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {showOnboarding && (
+          <OnboardingModal
+            onClose={() => {
+              setShowOnboarding(false);
+              setSearchParams({}); // Clear ?setup=true from URL
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <div>
         {/* Header */}
@@ -46,23 +65,38 @@ export default function Dashboard() {
               Performance baseline monitoring across all connected GitHub repositories
             </p>
           </div>
-          <a
-            href="https://github.com/apps/deployguard-saksham842"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-primary text-xs"
-          >
-            + Add repository
-          </a>
+          <GsapMagnetic strength={0.25}>
+            <a
+              href="https://github.com/apps/deployguard-saksham842"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary text-xs shadow-sm hover:shadow-[0_0_20px_rgba(76,141,255,0.25)]"
+            >
+              + Add repository
+            </a>
+          </GsapMagnetic>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <StatCard label="Connected Repos" value={repos.length} />
-          <StatCard label="Passing Checks" value={passCount} color="green" />
-          <StatCard label="Failing Checks" value={failCount} color="red" />
-          <StatCard label="Total Checks" value={totalChecks} />
-        </div>
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6"
+        >
+          <motion.div variants={itemVariants}>
+            <StatCard label="Connected Repos" value={repos.length} />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <StatCard label="Passing Checks" value={passCount} color="green" />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <StatCard label="Failing Checks" value={failCount} color="red" />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <StatCard label="Total Checks" value={totalChecks} />
+          </motion.div>
+        </motion.div>
 
         {/* Repos grid */}
         {loading && (
@@ -96,15 +130,21 @@ export default function Dashboard() {
           const mostActiveId = sorted[0]?.id;
 
           return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {repos.map(repo => (
-                <RepoCard
-                  key={repo.id}
-                  repo={repo}
-                  isMostActive={repo.id === mostActiveId && Boolean(repo.last_check)}
-                />
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
+            >
+              {sorted.map(repo => (
+                <motion.div key={repo.id} variants={itemVariants} className="h-full">
+                  <RepoCard
+                    repo={repo}
+                    isMostActive={repo.id === mostActiveId && Boolean(repo.last_check)}
+                  />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           );
         })()}
       </div>
@@ -116,7 +156,7 @@ function StatCard({ label, value, color }) {
   const valueColor = color === 'green' ? 'text-[#3DD68C]' : color === 'red' ? 'text-[#F0605A]' : 'text-[#E8EAED]';
 
   return (
-    <div className="bg-[#161A1F] border border-[#252B32] rounded-lg p-3.5">
+    <div className="bg-[#161A1F] border border-[#252B32] rounded-lg p-3.5 transition-colors hover:border-[#38424E]">
       <div className="text-[10px] font-mono font-semibold text-[#8B92A0] tracking-wider uppercase">
         {label}
       </div>
@@ -129,20 +169,27 @@ function StatCard({ label, value, color }) {
 
 function EmptyState() {
   return (
-    <div className="text-center py-14 px-4 bg-[#161A1F] border border-[#252B32] rounded-lg max-w-md mx-auto">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.3 }}
+      className="text-center py-14 px-4 bg-[#161A1F] border border-[#252B32] rounded-lg max-w-md mx-auto"
+    >
       <h2 className="text-sm font-semibold text-[#E8EAED] mb-1">No repositories connected yet</h2>
       <p className="text-xs text-[#8B92A0] mb-5 max-w-[320px] mx-auto leading-relaxed">
         Install the DeployGuard GitHub App on your repositories to enable automated setup PRs and performance tracking.
       </p>
-      <a
-        href="https://github.com/apps/deployguard-saksham842"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn btn-primary text-xs"
-      >
-        Install GitHub App →
-      </a>
-    </div>
+      <GsapMagnetic strength={0.3}>
+        <a
+          href="https://github.com/apps/deployguard-saksham842"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-primary text-xs shadow-sm hover:shadow-[0_0_20px_rgba(76,141,255,0.25)]"
+        >
+          Install GitHub App →
+        </a>
+      </GsapMagnetic>
+    </motion.div>
   );
 }
 
@@ -200,8 +247,20 @@ jobs:
           retention-days: 7`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0D0F12]/80 backdrop-blur-sm">
-      <div className="bg-[#161A1F] border border-[#252B32] rounded-lg max-w-xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0D0F12]/80 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+        className="bg-[#161A1F] border border-[#252B32] rounded-lg max-w-xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+      >
         {/* Modal Header */}
         <div className="px-5 py-4 border-b border-[#252B32] flex items-center justify-between">
           <div>
@@ -354,7 +413,7 @@ jobs:
             Close
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

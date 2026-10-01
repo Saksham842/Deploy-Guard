@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
+import GsapMagnetic from './GsapMagnetic';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -11,15 +12,17 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-[#161A1F] border-b border-[#252B32] px-6 h-[54px] flex items-center justify-between sticky top-0 z-50">
+    <nav className="bg-[#161A1F]/90 backdrop-blur-md border-b border-[#252B32] px-6 h-[54px] flex items-center justify-between sticky top-0 z-50">
       
       {/* Brand logo and link */}
-      <Link to="/dashboard" className="flex items-center gap-2 no-underline">
-        <span className="text-lg">🛡️</span>
-        <span className="font-bold text-xs tracking-tight text-[#E8EAED]">
-          Deploy<span className="text-[#4C8DFF]">Guard</span>
-        </span>
-      </Link>
+      <GsapMagnetic strength={0.15}>
+        <Link to="/dashboard" className="flex items-center gap-2 no-underline">
+          <span className="text-lg">🛡️</span>
+          <span className="font-bold text-xs tracking-tight text-[#E8EAED]">
+            Deploy<span className="text-[#4C8DFF]">Guard</span>
+          </span>
+        </Link>
+      </GsapMagnetic>
 
       {/* Nav Actions */}
       <div className="flex items-center gap-5">
@@ -54,12 +57,14 @@ export default function Navbar() {
             <span className="text-[#8B92A0] text-xs font-mono hidden sm:inline">
               {username}
             </span>
-            <button
-              onClick={handleLogout}
-              className="px-2 py-1 border border-[#252B32] hover:border-[#38424E] rounded text-[11px] font-mono text-[#8B92A0] hover:text-[#E8EAED] bg-transparent transition-colors cursor-pointer"
-            >
-              Sign out
-            </button>
+            <GsapMagnetic strength={0.2}>
+              <button
+                onClick={handleLogout}
+                className="px-2 py-1 border border-[#252B32] hover:border-[#38424E] rounded text-[11px] font-mono text-[#8B92A0] hover:text-[#E8EAED] bg-transparent transition-colors cursor-pointer"
+              >
+                Sign out
+              </button>
+            </GsapMagnetic>
           </div>
         )}
       </div>

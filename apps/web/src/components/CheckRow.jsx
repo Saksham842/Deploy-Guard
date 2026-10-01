@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Badge from './Badge';
 
 export default function CheckRow({ check, owner, name }) {
@@ -7,11 +8,11 @@ export default function CheckRow({ check, owner, name }) {
   const isPass = check.status === 'pass';
   const isFail = check.status === 'fail';
 
-  const stripeClass = isPass
-    ? 'border-l-[#3DD68C]'
+  const stripeColor = isPass
+    ? '#3DD68C'
     : isFail
-    ? 'border-l-[#F0605A]'
-    : 'border-l-[#F5A623]';
+    ? '#F0605A'
+    : '#F5A623';
 
   const deltaStr = delta != null
     ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`
@@ -39,7 +40,8 @@ export default function CheckRow({ check, owner, name }) {
     <>
       <tr
         onClick={() => setExpanded(!expanded)}
-        className={`border-l-[3px] ${stripeClass} cursor-pointer transition-colors duration-150 hover:bg-[#1C2128]`}
+        className="cursor-pointer transition-colors duration-150 hover:bg-[#1C2128]"
+        style={{ borderLeft: `3px solid ${stripeColor}` }}
       >
         <td className="font-mono text-xs">
           <a
@@ -72,55 +74,63 @@ export default function CheckRow({ check, owner, name }) {
         </td>
         <td className="text-right font-mono text-[11px] text-[#8B92A0]">
           <span className="mr-3">{date}</span>
-          <span className="inline-block transition-transform duration-200 text-[#57606A]" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-            ›
-          </span>
-        </td>
-      </tr>
-
-      {/* Smooth expanding cause details */}
-      <tr>
-        <td colSpan={5} className="p-0 border-b border-[#1B2026]">
-          <div
-            className="overflow-hidden transition-all duration-200 ease-out"
-            style={{
-              maxHeight: expanded ? '240px' : '0px',
-              opacity: expanded ? 1 : 0,
-            }}
+          <motion.span
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="inline-block text-[#57606A]"
           >
-            <div className="bg-[#101317] border-l-[3px] border-l-[#252B32] px-4 py-3 text-xs space-y-2">
-              <div className="flex items-center gap-4 text-[#8B92A0] font-mono text-[11px]">
-                <span>Head: <code className="text-[#E8EAED]">{check.head_sha?.slice(0, 7)}</code></span>
-                <span>Base: <code className="text-[#E8EAED]">{check.base_sha?.slice(0, 7)}</code></span>
-                {check.results?.bundle_kb && (
-                  <span>
-                    Size: <strong className="text-[#E8EAED]">{check.results.bundle_kb.after ?? '—'} KB</strong> (was {check.results.bundle_kb.before ?? '—'} KB)
-                  </span>
-                )}
-              </div>
-
-              {causes.length > 0 ? (
-                <div className="space-y-1 pt-1">
-                  <div className="text-[11px] font-semibold text-[#8B92A0] uppercase tracking-wide">
-                    Identified Causes
-                  </div>
-                  {causes.map((c, i) => (
-                    <div key={i} className="flex items-start gap-2 text-[#E8EAED]">
-                      <span className="font-mono text-[11px] text-[#F5A623]">•</span>
-                      <span className="font-mono text-xs">{c.cause_type}:</span>
-                      <span className="text-[#8B92A0]">{c.detail || 'Detected from commit heuristics'}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[#8B92A0] italic text-[11px]">
-                  No regression causes flagged for this run.
-                </div>
-              )}
-            </div>
-          </div>
+            ›
+          </motion.span>
         </td>
       </tr>
+
+      {/* Smooth Spring Expanding Cause Details with Framer Motion */}
+      <AnimatePresence>
+        {expanded && (
+          <tr>
+            <td colSpan={5} className="p-0 border-b border-[#1B2026]">
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="bg-[#101317] border-l-[3px] border-l-[#252B32] px-4 py-3 text-xs space-y-2">
+                  <div className="flex items-center gap-4 text-[#8B92A0] font-mono text-[11px]">
+                    <span>Head: <code className="text-[#E8EAED]">{check.head_sha?.slice(0, 7)}</code></span>
+                    <span>Base: <code className="text-[#E8EAED]">{check.base_sha?.slice(0, 7)}</code></span>
+                    {check.results?.bundle_kb && (
+                      <span>
+                        Size: <strong className="text-[#E8EAED]">{check.results.bundle_kb.after ?? '—'} KB</strong> (was {check.results.bundle_kb.before ?? '—'} KB)
+                      </span>
+                    )}
+                  </div>
+
+                  {causes.length > 0 ? (
+                    <div className="space-y-1 pt-1">
+                      <div className="text-[11px] font-semibold text-[#8B92A0] uppercase tracking-wide">
+                        Identified Causes
+                      </div>
+                      {causes.map((c, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[#E8EAED]">
+                          <span className="font-mono text-[11px] text-[#F5A623]">•</span>
+                          <span className="font-mono text-xs">{c.cause_type}:</span>
+                          <span className="text-[#8B92A0]">{c.detail || 'Detected from commit heuristics'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[#8B92A0] italic text-[11px]">
+                      No regression causes flagged for this run.
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </td>
+          </tr>
+        )}
+      </AnimatePresence>
     </>
   );
 }
