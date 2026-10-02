@@ -144,10 +144,10 @@ export default function Login() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.45, delay: 0.15 }}
-            className="lg:col-span-5 relative"
+            className="lg:col-span-5 relative flex justify-center lg:justify-end"
           >
             {/* Top gradient glow border */}
-            <div className="relative rounded-2xl bg-[#0F1219]/90 border border-white/[0.1] backdrop-blur-2xl p-7 lg:p-9 shadow-[0_25px_60px_rgba(0,0,0,0.7)] overflow-hidden">
+            <div className="relative rounded-2xl bg-[#0F1219]/90 border border-white/[0.1] backdrop-blur-2xl p-6 lg:p-7 max-w-[390px] w-full shadow-[0_25px_60px_rgba(0,0,0,0.7)] overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-400" />
               
               <div className="mb-6">
