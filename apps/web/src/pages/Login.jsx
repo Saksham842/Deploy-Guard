@@ -77,53 +77,61 @@ export default function Login() {
             </div>
 
             {/* Simulated Live CI Telemetry Terminal */}
-            <div className="relative rounded-xl border border-white/[0.1] bg-[#0D1017]/90 backdrop-blur-xl shadow-[0_20px_40px_rgba(0,0,0,0.5)] overflow-hidden">
+            <div className="relative rounded-2xl border border-white/[0.12] bg-[#0D1017]/95 backdrop-blur-2xl shadow-[0_25px_50px_rgba(0,0,0,0.6)] overflow-hidden min-h-[340px] flex flex-col justify-between">
               {/* Top window bar */}
-              <div className="px-4 py-2.5 bg-[#151922] border-b border-white/[0.08] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-                  <span className="text-[11px] font-mono text-[#9CA3AF] ml-2">check-run: pull/42 (deployguard.yml)</span>
+              <div className="px-5 py-3.5 bg-[#151922] border-b border-white/[0.08] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3 h-3 rounded-full bg-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.4)]" />
+                  <div className="w-3 h-3 rounded-full bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
+                  <div className="w-3 h-3 rounded-full bg-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                  <span className="text-xs font-mono text-[#9CA3AF] ml-2">check-run: pull/42 (deployguard.yml)</span>
                 </div>
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/30">
+                <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/50 px-2.5 py-1 rounded-full border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
                   LIVE RUNNER
                 </span>
               </div>
 
               {/* Terminal body with Three.js Hologram floating in corner */}
-              <div className="p-4 font-mono text-xs space-y-2 relative">
-                <div className="absolute top-1 right-1 w-32 h-32 opacity-75 pointer-events-none">
+              <div className="p-6 sm:p-7 font-mono text-xs sm:text-[13px] space-y-3.5 relative flex-1 flex flex-col justify-between">
+                <div className="absolute top-2 right-2 w-48 h-48 sm:w-56 sm:h-56 opacity-85 pointer-events-none">
                   <ThreeCanvas />
                 </div>
 
-                <div className="flex items-center gap-2 text-[#9CA3AF]">
-                  <span className="text-violet-400">commit</span>
-                  <span className="text-white bg-white/[0.08] px-1.5 py-0.5 rounded">9da54b0</span>
+                <div className="flex items-center gap-2.5 text-[#9CA3AF]">
+                  <span className="text-violet-400 font-bold">commit</span>
+                  <span className="text-white bg-white/[0.08] px-2 py-0.5 rounded font-mono text-xs">9da54b0</span>
                   <span className="text-emerald-400 font-semibold">(feature/smart-bundle-split)</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-cyan-300">
-                  <span className="text-cyan-400">✓</span>
+                <div className="flex items-center gap-2.5 text-cyan-300">
+                  <span className="text-cyan-400 font-bold">✓</span>
                   <span>Detected Vite 5.4 · Normalized 34 chunks</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <span className="text-emerald-400">✓</span>
+                <div className="flex items-center gap-2.5 text-emerald-400">
+                  <span className="text-emerald-400 font-bold">✓</span>
                   <span>Bundle size: <strong>342.1 KB</strong> (-18.4 KB / -5.1% under threshold)</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-indigo-300">
-                  <span className="text-indigo-400">✓</span>
-                  <span>Database tracking: <strong>14 queries</strong> (baseline: 18)</span>
+                <div className="flex items-center gap-2.5 text-indigo-300">
+                  <span className="text-indigo-400 font-bold">✓</span>
+                  <span>Database tracking: <strong>14 queries</strong> (baseline: 18 queries)</span>
                 </div>
 
-                <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <div className="flex items-center gap-2.5 text-violet-300">
+                  <span className="text-violet-400 font-bold">✓</span>
+                  <span>API latency p95: <strong>42ms</strong> (-8ms / -16% vs main branch)</span>
+                </div>
+
+                <div className="pt-3.5 mt-2 border-t border-white/[0.08] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_8px_#10B981]" />
+                    </span>
                     <span>CHECK RUN PASSED (840ms)</span>
                   </div>
-                  <span className="text-[#9CA3AF]">GitHub Status API: 200 OK</span>
+                  <span className="text-[#9CA3AF] font-mono text-[11px]">GitHub Status API: 200 OK</span>
                 </div>
               </div>
             </div>
