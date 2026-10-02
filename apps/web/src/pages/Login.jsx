@@ -134,21 +134,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Bottom mini metric tags */}
-            <div className="mt-5 flex items-center gap-5 text-xs font-mono text-[#9CA3AF]">
-              <div className="flex items-center gap-1.5">
-                <span className="text-violet-400">●</span>
-                <span>Vite · Next.js · Webpack</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-cyan-400">●</span>
-                <span>Groq LLaMA 3.1 AI</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-emerald-400">●</span>
-                <span>Zero build latency</span>
-              </div>
-            </div>
+
           </motion.div>
 
           {/* Right panel: Render-Grade Focused Sign-in Card */}
@@ -215,14 +201,7 @@ export default function Login() {
         </div>
       </main>
 
-      {/* Clean Render-style minimal footer */}
-      <footer className="relative z-10 px-8 py-4 border-t border-white/[0.07] flex items-center justify-between text-xs text-[#9CA3AF] font-mono bg-[#08090C]/80 backdrop-blur-xl">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>DeployGuard Systems 100% Operational</span>
-        </div>
-        <span>Built with Node · Python · React · Three.js</span>
-      </footer>
+
     </div>
   );
 }
