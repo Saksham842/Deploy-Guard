@@ -21,10 +21,8 @@ export default function Navbar() {
       {/* Brand logo and link */}
       <div className="flex items-center gap-6">
         <GsapMagnetic strength={0.15}>
-          <Link to="/dashboard" className="flex items-center gap-2.5 no-underline group">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-[0_0_12px_rgba(124,58,237,0.4)] group-hover:shadow-[0_0_18px_rgba(124,58,237,0.7)] transition-all">
-              <span className="text-sm">🛡️</span>
-            </div>
+          <Link to="/dashboard" className="flex items-center gap-2 no-underline group">
+            <span className="text-lg select-none group-hover:scale-110 transition-transform">🛡️</span>
             <span className="font-extrabold text-sm tracking-tight text-white">
               Deploy<span className="text-gradient-violet">Guard</span>
             </span>

@@ -23,10 +23,8 @@ export default function Login() {
         transition={{ duration: 0.3 }}
         className="relative z-10 px-6 sm:px-10 py-4 flex items-center justify-between border-b border-white/[0.07] bg-[#08090C]/75 backdrop-blur-xl"
       >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-[0_0_16px_rgba(124,58,237,0.5)]">
-            <span className="text-base">🛡️</span>
-          </div>
+        <div className="flex items-center gap-2.5">
+          <span className="text-xl select-none">🛡️</span>
           <div>
             <span className="font-extrabold text-sm tracking-tight text-white">
               Deploy<span className="text-gradient-violet">Guard</span>
