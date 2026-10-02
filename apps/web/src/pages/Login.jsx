@@ -62,14 +62,14 @@ export default function Login() {
             transition={{ duration: 0.45, delay: 0.1 }}
             className="lg:col-span-8 flex flex-col justify-between relative"
           >
-            <div>
+            <div className="-mt-6 sm:-mt-10 mb-8 sm:mb-10 pl-3 sm:pl-6">
               {/* Bold Gradient Title */}
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-[1.15] mb-4">
                 Ship at lightspeed. <br />
                 <span className="text-gradient-violet">Zero regressions.</span>
               </h1>
 
-              <p className="text-sm text-[#9CA3AF] leading-relaxed mb-6 max-w-[620px]">
+              <p className="text-sm text-[#9CA3AF] leading-relaxed max-w-[620px]">
                 DeployGuard intercepts pull requests before they hit staging. Detect bundle chunk bloat, unindexed SQL queries, and API latency spikes with automated setup PRs and ML diagnostics.
               </p>
             </div>
