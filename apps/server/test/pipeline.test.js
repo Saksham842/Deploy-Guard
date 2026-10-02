@@ -218,4 +218,50 @@ describe('DeployGuard Core Pipeline Smoke Test', () => {
     expect(db.saveCheck).toHaveBeenCalledTimes(1);
     expect(mockOctokit.rest.issues.createComment).toHaveBeenCalledTimes(1);
   });
+
+  test('pull_request.opened creates a neutral check with instructions when workflow file is missing', async () => {
+    mockOctokit.rest.repos = {
+      getContent: jest.fn().mockRejectedValue({ status: 404 }),
+    };
+
+    await handlePR({ octokit: mockOctokit, payload: MOCK_PR_PAYLOAD });
+
+    expect(mockOctokit.rest.checks.create).toHaveBeenCalledWith(expect.objectContaining({
+      owner: 'acme-corp',
+      repo: 'web-app',
+      name: 'DeployGuard',
+      status: 'completed',
+      conclusion: 'neutral',
+      output: expect.objectContaining({
+        title: expect.stringContaining('Setup required'),
+      }),
+    }));
+  });
+
+  test('workflow_run.completed with failure conclusion updates pending check to failure', async () => {
+    const failedPayload = {
+      ...MOCK_WORKFLOW_PAYLOAD,
+      workflow_run: {
+        ...MOCK_WORKFLOW_PAYLOAD.workflow_run,
+        conclusion: 'failure',
+        html_url: 'https://github.com/acme-corp/web-app/actions/runs/555',
+      },
+    };
+
+    await handleWorkflowRun({
+      id: 'gh-delivery-uuid-failed',
+      octokit: mockOctokit,
+      payload: failedPayload,
+    });
+
+    expect(mockOctokit.rest.checks.update).toHaveBeenCalledWith(expect.objectContaining({
+      check_run_id: 1001,
+      status: 'completed',
+      conclusion: 'failure',
+      output: expect.objectContaining({
+        title: expect.stringContaining('CI workflow failed'),
+      }),
+    }));
+  });
 });
+

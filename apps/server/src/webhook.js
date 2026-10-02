@@ -77,7 +77,70 @@ async function handlePR({ octokit, payload }) {
 
   console.log(`[webhook] PR #${prNumber} opened on ${owner}/${repoName} (${headSha.slice(0, 7)})`);
 
-  await getOrCreateRepo(repository.id, owner, repoName, installation.id);
+  const installId = installation?.id ?? null;
+  const dbRepo = await getOrCreateRepo(repository.id, owner, repoName, installId);
+
+  // If octokit repo access is available, verify the workflow file exists on this branch.
+  // If no workflow is present, inform the user immediately instead of leaving check pending forever.
+  if (octokit.rest.repos?.getContent) {
+    let hasWorkflow = false;
+    const workflowCandidates = [
+      '.github/workflows/deployguard.yml',
+      '.github/workflows/bundle-analysis.yml',
+    ];
+
+    for (const path of workflowCandidates) {
+      try {
+        await octokit.rest.repos.getContent({
+          owner,
+          repo: repoName,
+          path,
+          ref: headSha,
+        });
+        hasWorkflow = true;
+        break;
+      } catch (err) {
+        if (err.status !== 404) {
+          // Non-404 error (e.g. rate limit / network), assume it may exist
+          hasWorkflow = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasWorkflow) {
+      console.log(`[webhook] PR #${prNumber}: DeployGuard workflow missing on branch ${headSha.slice(0, 7)}`);
+      const setupUrl = dbRepo?.setup_pr_url;
+      const summaryLines = [
+        '### ⚠️ DeployGuard workflow not configured',
+        '',
+        'DeployGuard requires a GitHub Actions workflow in `.github/workflows/` to measure bundle sizes on pull requests.',
+        '',
+        setupUrl
+          ? `👉 **Action required:** Merge the automated setup PR: [${setupUrl}](${setupUrl})`
+          : '👉 **Action required:** Add `.github/workflows/deployguard.yml` to your default or feature branch.',
+        '',
+        'Once the workflow file is merged into your branch, DeployGuard will automatically track bundle size regressions.',
+      ];
+
+      const { data: checkRun } = await octokit.rest.checks.create({
+        owner,
+        repo:       repoName,
+        name:       'DeployGuard',
+        head_sha:   headSha,
+        status:     'completed',
+        conclusion: 'neutral',
+        completed_at: new Date().toISOString(),
+        output: {
+          title:   '⚠️ Setup required — DeployGuard workflow missing',
+          summary: summaryLines.join('\n'),
+        },
+      });
+
+      console.log(`[webhook] Check run #${checkRun.id} created (neutral - workflow missing)`);
+      return;
+    }
+  }
 
   const { data: checkRun } = await octokit.rest.checks.create({
     owner,
@@ -98,7 +161,7 @@ async function handlePR({ octokit, payload }) {
 // ---------------------------------------------------------------------------
 // handleWorkflowRun — fired when any Actions workflow on this repo completes
 //
-// Filtered to only the two workflow names DeployGuard cares about:
+// Filtered to the workflow names DeployGuard monitors:
 //   - "Bundle Analysis"        (DeployGuard's own repo)
 //   - "DeployGuard Bundle Stats" (tenant onboarding template)
 //
@@ -109,11 +172,35 @@ async function handlePR({ octokit, payload }) {
 async function handleWorkflowRun({ id: deliveryId, octokit, payload }) {
   const { workflow_run, repository, installation } = payload;
 
-  const allowedWorkflows = ['Bundle Analysis', 'DeployGuard Bundle Stats'];
+  const allowedWorkflows = ['Bundle Analysis', 'DeployGuard Bundle Stats', 'DeployGuard', 'Bundle Stats', 'deployguard'];
   if (!allowedWorkflows.includes(workflow_run.name)) return;
 
   if (workflow_run.conclusion !== 'success') {
-    console.warn(`[workflow_run] "${workflow_run.name}" ended with ${workflow_run.conclusion} — skipping`);
+    console.warn(`[workflow_run] "${workflow_run.name}" ended with ${workflow_run.conclusion} — updating check run`);
+    const owner    = repository.owner.login;
+    const repoName = repository.name;
+    const headSha  = workflow_run.head_sha;
+
+    try {
+      const { data } = await octokit.rest.checks.listForRef({
+        owner, repo: repoName, ref: headSha, check_name: 'DeployGuard', per_page: 5,
+      });
+      const pendingCheck = data.check_runs.find(c => c.status !== 'completed');
+      if (pendingCheck) {
+        await octokit.rest.checks.update({
+          owner, repo: repoName, check_run_id: pendingCheck.id,
+          status: 'completed',
+          conclusion: 'failure',
+          completed_at: new Date().toISOString(),
+          output: {
+            title: `❌ CI workflow failed (${workflow_run.conclusion})`,
+            summary: `The GitHub Actions workflow **"${workflow_run.name}"** finished with conclusion: **${workflow_run.conclusion}**.\n\nDeployGuard cannot analyze bundle sizes because the CI build did not complete successfully. Check the [Actions run logs](${workflow_run.html_url}) for details.`,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[workflow_run] Could not update pending check for failed workflow:', err.message);
+    }
     return;
   }
 
