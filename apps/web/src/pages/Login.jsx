@@ -65,12 +65,6 @@ export default function Login() {
             className="lg:col-span-7 flex flex-col justify-between relative"
           >
             <div>
-              {/* Render-style Pill Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-violet-500/15 via-indigo-500/15 to-cyan-500/15 border border-violet-500/30 text-violet-300 text-xs font-mono mb-4 backdrop-blur-md">
-                <span className="text-amber-400">⚡</span>
-                <span className="font-semibold tracking-wide">CI/CD BUNDLE & QUERY REGRESSION GUARD</span>
-              </div>
-
               {/* Bold Gradient Title */}
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-[1.15] mb-4">
                 Ship at lightspeed. <br />
