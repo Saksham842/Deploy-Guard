@@ -28,38 +28,52 @@ export default function ThreeCanvas({ className = '' }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    // 3. Central Wireframe Icosahedron Core (The Quality Gate Core)
+    // 3. Central Wireframe Icosahedron Core (Render Electric Violet)
     const coreGeometry = new THREE.IcosahedronGeometry(1.6, 2);
     const coreMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4C8DFF,
+      color: 0x8B5CF6,
       wireframe: true,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.35,
     });
     const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(coreMesh);
 
-    // 4. Inner Glowing Geodesic (Passing Baseline Core)
-    const innerGeometry = new THREE.IcosahedronGeometry(1.0, 1);
+    // 4. Inner Glowing Geodesic (Neon Cyan Cloud Core)
+    const innerGeometry = new THREE.IcosahedronGeometry(0.95, 1);
     const innerMaterial = new THREE.MeshBasicMaterial({
-      color: 0x3DD68C,
+      color: 0x00F0FF,
       wireframe: true,
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.55,
     });
     const innerMesh = new THREE.Mesh(innerGeometry, innerMaterial);
     scene.add(innerMesh);
 
-    // 5. Constellation Chunk Nodes (Points in Orbit)
-    const particleCount = 120;
+    // 4b. Cybernetic Orbital Ring (Render Cloud Orbit)
+    const ringGeometry = new THREE.RingGeometry(2.1, 2.15, 64);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0x7C3AED,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.4,
+    });
+    const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+    ringMesh.rotation.x = Math.PI / 3;
+    scene.add(ringMesh);
+
+    // 5. Constellation Chunk Nodes (Vibrant Render Spectrum)
+    const particleCount = 140;
     const particlePositions = new Float32Array(particleCount * 3);
     const particleColors = new Float32Array(particleCount * 3);
 
     const colors = [
-      new THREE.Color('#4C8DFF'), // Electric Blue (Interactive / Chunks)
-      new THREE.Color('#3DD68C'), // Signal Green (Passing)
-      new THREE.Color('#F0605A'), // Signal Red (Delta / Regression points)
-      new THREE.Color('#E8EAED'), // Clean White (Metadata)
+      new THREE.Color('#00F0FF'), // Neon Cyan
+      new THREE.Color('#A855F7'), // Vivid Purple
+      new THREE.Color('#10B981'), // Emerald Mint
+      new THREE.Color('#EC4899'), // Electric Magenta
+      new THREE.Color('#F59E0B'), // Sunset Amber
+      new THREE.Color('#6366F1'), // Render Indigo
     ];
 
     for (let i = 0; i < particleCount; i++) {
@@ -158,6 +172,9 @@ export default function ThreeCanvas({ className = '' }) {
       innerMesh.rotation.x = -elapsedTime * 0.18 - mouseY;
       innerMesh.rotation.y = -elapsedTime * 0.24 - mouseX;
 
+      ringMesh.rotation.z = elapsedTime * 0.15;
+      ringMesh.rotation.y = elapsedTime * 0.08 + mouseX * 0.3;
+
       particles.rotation.x = elapsedTime * 0.06 + mouseY * 0.5;
       particles.rotation.y = elapsedTime * 0.09 + mouseX * 0.5;
 
@@ -176,6 +193,8 @@ export default function ThreeCanvas({ className = '' }) {
       coreMaterial.dispose();
       innerGeometry.dispose();
       innerMaterial.dispose();
+      ringGeometry.dispose();
+      ringMaterial.dispose();
       particleGeometry.dispose();
       particleMaterial.dispose();
       particleTexture.dispose();

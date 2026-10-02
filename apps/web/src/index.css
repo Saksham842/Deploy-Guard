@@ -1,43 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 @import "tailwindcss";
 
 :root {
-  /* Developer-Grade Color Tokens (Phase 5) */
-  --bg-base: #0D0F12;
-  --bg-panel: #161A1F;
-  --bg-panel-hover: #1C2128;
-  --border-hairline: #252B32;
-  --border-subtle: #1B2026;
+  /* Render-Grade Dark Cloud Color Tokens */
+  --bg-base: #08090C;
+  --bg-surface: #0E1015;
+  --bg-panel: #13161D;
+  --bg-panel-hover: #1A1E27;
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-active: rgba(124, 58, 237, 0.4);
   
-  --text-primary: #E8EAED;
-  --text-muted: #8B92A0;
-  --text-subtle: #57606A;
+  --text-primary: #F3F4F6;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
   
-  --signal-pass: #3DD68C;
-  --signal-pass-subtle: rgba(61, 214, 140, 0.1);
-  --signal-fail: #F0605A;
-  --signal-fail-subtle: rgba(240, 96, 90, 0.1);
-  --signal-warn: #F5A623;
-  --signal-warn-subtle: rgba(245, 166, 35, 0.1);
-  
-  --interactive-blue: #4C8DFF;
-  --interactive-blue-hover: #3A7CE8;
-  --interactive-blue-subtle: rgba(76, 141, 255, 0.12);
+  /* Render Vivid Accents */
+  --render-violet: #7C3AED;
+  --render-violet-light: #8B5CF6;
+  --render-indigo: #6366F1;
+  --render-cyan: #06B6D4;
+  --render-cyan-glow: #00F0FF;
+  --render-emerald: #10B981;
+  --render-rose: #F43F5E;
+  --render-amber: #F59E0B;
 
-  /* Legacy variable mappings for backward-compatibility */
-  --bg-primary: var(--bg-base);
-  --bg-card: var(--bg-panel);
-  --bg-card-hover: var(--bg-panel-hover);
-  --border: var(--border-hairline);
-  --accent: var(--interactive-blue);
-  --accent-glow: var(--interactive-blue-subtle);
-  --green: var(--signal-pass);
-  --green-glow: var(--signal-pass-subtle);
-  --red: var(--signal-fail);
-  --red-glow: var(--signal-fail-subtle);
-  --yellow: var(--signal-warn);
-  --text-secondary: var(--text-muted);
+  /* Legacy mappings */
+  --signal-pass: var(--render-emerald);
+  --signal-fail: var(--render-rose);
+  --signal-warn: var(--render-amber);
+  --interactive-blue: var(--render-violet);
+  --border-hairline: var(--border-subtle);
 }
 
 @layer base {
@@ -53,7 +46,7 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.5;
@@ -73,81 +66,122 @@ code, pre, .mono, [data-mono="true"] {
 ::-webkit-scrollbar-thumb { background: var(--border-hairline); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
-/* Technical Panels (flatter, hairline border, no generic card shadow) */
+/* Technical Panels (Glassmorphism & Crisp Hairline Borders) */
 .panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-hairline);
-  border-radius: 8px;
+  background: rgba(19, 22, 29, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
   padding: 1.25rem;
 }
 
 .card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-hairline);
-  border-radius: 8px;
+  background: rgba(19, 22, 29, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
   padding: 1.25rem;
-  transition: border-color 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .card:hover {
-  border-color: #38424E;
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(124, 58, 237, 0.18);
 }
 
-/* Buttons — Blue reserved only for primary interactive action */
+/* Render Signature Gradient Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  padding: 0.45rem 1rem;
-  border-radius: 6px;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
   text-decoration: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .btn-primary {
-  background: var(--interactive-blue);
+  background: linear-gradient(135deg, #7C3AED 0%, #6366F1 50%, #4F46E5 100%);
   color: #FFFFFF;
-  border-color: var(--interactive-blue);
+  border-color: rgba(167, 139, 250, 0.3);
+  box-shadow: 0 0 20px -3px rgba(124, 58, 237, 0.45);
 }
 
 .btn-primary:hover {
-  background: var(--interactive-blue-hover);
-  border-color: var(--interactive-blue-hover);
+  background: linear-gradient(135deg, #8B5CF6 0%, #6366F1 50%, #4338CA 100%);
+  border-color: rgba(196, 181, 253, 0.5);
+  box-shadow: 0 0 28px 0 rgba(124, 58, 237, 0.6);
+  transform: translateY(-1px);
 }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-hairline);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
 }
 
 .btn-ghost:hover {
-  background: var(--bg-panel-hover);
-  color: var(--text-primary);
-  border-color: #38424E;
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
 }
 
-/* Inputs */
+.btn-secondary {
+  background: rgba(124, 58, 237, 0.1);
+  color: #C4B5FD;
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.btn-secondary:hover {
+  background: rgba(124, 58, 237, 0.2);
+  color: #EDE9FE;
+  border-color: rgba(124, 58, 237, 0.5);
+}
+
+/* Inputs with Violet Glow Focus */
 .input {
-  background: var(--bg-base);
-  border: 1px solid var(--border-hairline);
-  border-radius: 6px;
-  padding: 0.45rem 0.75rem;
+  background: rgba(10, 12, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
   color: var(--text-primary);
   font-size: 0.8125rem;
   font-family: inherit;
-  transition: border-color 0.15s ease;
+  transition: all 0.15s ease;
   width: 100%;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--interactive-blue);
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+}
+
+/* Render Text Gradient Utilities */
+.text-gradient-title {
+  background: linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 50%, #94A3B8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-violet {
+  background: linear-gradient(135deg, #C084FC 0%, #A855F7 30%, #6366F1 70%, #06B6D4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #22D3EE 0%, #38BDF8 50%, #818CF8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Technical Data Table */
@@ -252,13 +286,45 @@ code, pre, .mono, [data-mono="true"] {
   color: var(--text-muted);
 }
 
-/* Technical Grid Pattern for Login/Hero background (replaces generic canvas particles) */
+/* Render Developer Cloud Dotted Mesh Background */
 .tech-grid-bg {
-  background-color: var(--bg-base);
+  background-color: #08090C;
   background-image: 
-    linear-gradient(to right, rgba(37, 43, 50, 0.35) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(37, 43, 50, 0.35) 1px, transparent 1px);
-  background-size: 32px 32px;
+    radial-gradient(rgba(124, 58, 237, 0.16) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px, 28px 28px;
+  background-position: 0 0, 14px 14px;
+}
+
+/* Ambient Radial Glow Orbs */
+.glow-orb-violet {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.18) 0%, rgba(99, 102, 241, 0.08) 40%, transparent 70%);
+  filter: blur(60px);
+  pointer-events: none;
+}
+
+.glow-orb-cyan {
+  position: absolute;
+  width: 450px;
+  height: 450px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(59, 130, 246, 0.05) 45%, transparent 70%);
+  filter: blur(50px);
+  pointer-events: none;
+}
+
+.glow-orb-emerald {
+  position: absolute;
+  width: 350px;
+  height: 350px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%);
+  filter: blur(45px);
+  pointer-events: none;
 }
 
 /* Shimmer Loading Skeleton */

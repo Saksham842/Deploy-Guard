@@ -1,8 +1,9 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import GsapMagnetic from './GsapMagnetic';
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const username = localStorage.getItem('dg_username');
   const avatar = localStorage.getItem('dg_avatar');
 
@@ -11,56 +12,81 @@ export default function Navbar() {
     navigate('/login');
   }
 
+  const isReposActive = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/repo');
+  const isDocsActive = location.pathname === '/docs';
+
   return (
-    <nav className="bg-[#161A1F]/90 backdrop-blur-md border-b border-[#252B32] px-6 h-[54px] flex items-center justify-between sticky top-0 z-50">
+    <nav className="bg-[#08090C]/85 backdrop-blur-xl border-b border-white/[0.08] px-6 sm:px-8 h-[60px] flex items-center justify-between sticky top-0 z-50">
       
       {/* Brand logo and link */}
-      <GsapMagnetic strength={0.15}>
-        <Link to="/dashboard" className="flex items-center gap-2 no-underline">
-          <span className="text-lg">🛡️</span>
-          <span className="font-bold text-xs tracking-tight text-[#E8EAED]">
-            Deploy<span className="text-[#4C8DFF]">Guard</span>
+      <div className="flex items-center gap-6">
+        <GsapMagnetic strength={0.15}>
+          <Link to="/dashboard" className="flex items-center gap-2.5 no-underline group">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-[0_0_12px_rgba(124,58,237,0.4)] group-hover:shadow-[0_0_18px_rgba(124,58,237,0.7)] transition-all">
+              <span className="text-sm">🛡️</span>
+            </div>
+            <span className="font-extrabold text-sm tracking-tight text-white">
+              Deploy<span className="text-gradient-violet">Guard</span>
+            </span>
+          </Link>
+        </GsapMagnetic>
+
+        {/* Live Cluster Status Beacon (Render Style) */}
+        <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
           </span>
-        </Link>
-      </GsapMagnetic>
+          <span>US-East Runner: Operational</span>
+        </div>
+      </div>
 
       {/* Nav Actions */}
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-2 sm:gap-4">
         <Link
-          to="/dashboard?setup=true"
-          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
+          to="/dashboard"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            isReposActive && !location.search.includes('setup=true')
+              ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
+              : 'text-[#9CA3AF] hover:text-white hover:bg-white/[0.04]'
+          }`}
         >
-          Setup guide
+          Repositories
         </Link>
         <Link
           to="/docs"
-          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            isDocsActive
+              ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
+              : 'text-[#9CA3AF] hover:text-white hover:bg-white/[0.04]'
+          }`}
         >
           Documentation
         </Link>
         <Link
-          to="/dashboard"
-          className="text-[#8B92A0] hover:text-[#E8EAED] no-underline text-xs transition-colors"
+          to="/dashboard?setup=true"
+          className="px-3 py-1.5 rounded-lg text-xs font-medium text-cyan-300 bg-cyan-950/30 border border-cyan-500/30 hover:bg-cyan-900/40 hover:border-cyan-400/50 transition-all flex items-center gap-1.5"
         >
-          Repositories
+          <span>⚡</span>
+          <span>CI Setup</span>
         </Link>
         
         {username && (
-          <div className="flex items-center gap-3 pl-3 border-l border-[#252B32]">
+          <div className="flex items-center gap-3 pl-3 ml-2 border-l border-white/[0.1]">
             {avatar && (
               <img
                 src={avatar}
                 alt={username}
-                className="w-6 h-6 rounded-full border border-[#252B32]"
+                className="w-7 h-7 rounded-full border border-violet-500/40 ring-2 ring-violet-500/20"
               />
             )}
-            <span className="text-[#8B92A0] text-xs font-mono hidden sm:inline">
+            <span className="text-white text-xs font-mono font-medium hidden sm:inline">
               {username}
             </span>
             <GsapMagnetic strength={0.2}>
               <button
                 onClick={handleLogout}
-                className="px-2 py-1 border border-[#252B32] hover:border-[#38424E] rounded text-[11px] font-mono text-[#8B92A0] hover:text-[#E8EAED] bg-transparent transition-colors cursor-pointer"
+                className="px-2.5 py-1 border border-white/[0.1] hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400 rounded-lg text-[11px] font-mono text-[#9CA3AF] bg-transparent transition-all cursor-pointer"
               >
                 Sign out
               </button>
