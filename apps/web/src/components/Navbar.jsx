@@ -46,7 +46,7 @@ export default function Navbar() {
         <Link
           to="/dashboard"
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            isReposActive && !location.search.includes('setup=true')
+            isReposActive
               ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
               : 'text-[#9CA3AF] hover:text-white hover:bg-white/[0.04]'
           }`}
@@ -62,13 +62,6 @@ export default function Navbar() {
           }`}
         >
           Documentation
-        </Link>
-        <Link
-          to="/dashboard?setup=true"
-          className="px-3 py-1.5 rounded-lg text-xs font-medium text-cyan-300 bg-cyan-950/30 border border-cyan-500/30 hover:bg-cyan-900/40 hover:border-cyan-400/50 transition-all flex items-center gap-1.5"
-        >
-          <span>⚡</span>
-          <span>CI Setup</span>
         </Link>
         
         {username && (

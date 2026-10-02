@@ -1,99 +1,254 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import GsapMagnetic from '../components/GsapMagnetic';
 
-// Documentation / How-it-works page explaining the inner workings, NLP tiers, and webhook structure.
 export default function Docs() {
+  const [activeSection, setActiveSection] = useState('setup'); // 'setup' | 'architecture' | 'nlp' | 'thresholds' | 'faq'
+  const [setupMode, setSetupMode] = useState('auto'); // 'auto' | 'manual'
+  const [bundlerTab, setBundlerTab] = useState('vite'); // 'vite' | 'next' | 'db'
+  const [copiedKey, setCopiedKey] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
+
+  const copyToClipboard = (text, key) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2200);
+  };
+
+  const manualWorkflows = {
+    vite: `name: DeployGuard Bundle Stats
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+
+jobs:
+  bundle-stats:
+    runs-on: ubuntu-latest
+    name: Upload bundle stats for DeployGuard
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Extract Vite Bundle Stats
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const distDir = 'dist/assets';
+            const files = fs.existsSync(distDir) ? fs.readdirSync(distDir) : [];
+            const assets = files.map(f => ({
+              name: f,
+              size: fs.statSync(path.join(distDir, f)).size
+            }));
+            fs.mkdirSync('dist', { recursive: true });
+            fs.writeFileSync('dist/stats.json', JSON.stringify({ format: 'vite', assets }));
+          "
+
+      - name: Upload bundle-stats artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: dist/stats.json
+          retention-days: 7`,
+
+    next: `name: DeployGuard Next.js Stats
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, master]
+
+jobs:
+  bundle-stats:
+    runs-on: ubuntu-latest
+    name: Upload Next.js stats for DeployGuard
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install & Build
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Extract Next.js Client Chunks
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let res = [];
+              if (!fs.existsSync(dir)) return res;
+              for (const f of fs.readdirSync(dir)) {
+                const full = path.join(dir, f);
+                if (fs.statSync(full).isDirectory()) res.push(...walk(full));
+                else res.push({ name: path.relative('.next', full), size: fs.statSync(full).size });
+              }
+              return res;
+            }
+            const assets = walk('.next/static');
+            fs.mkdirSync('dist', { recursive: true });
+            fs.writeFileSync('dist/stats.json', JSON.stringify({ format: 'next', assets }));
+          "
+
+      - name: Upload bundle-stats artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: dist/stats.json
+          retention-days: 7`,
+
+    db: `// Example test harness hook for Database Query Regression tracking
+// Include in your integration/unit test teardown to emit dist/query-stats.json
+
+import fs from 'fs';
+import { dbProfiler } from './test-db-setup';
+
+afterAll(async () => {
+  const queryCount = dbProfiler.getQueryCount();
+  const slowQueries = dbProfiler.getSlowQueries();
+
+  fs.mkdirSync('dist', { recursive: true });
+  fs.writeFileSync('dist/query-stats.json', JSON.stringify({
+    queryCount,
+    slowQueries,
+    timestamp: new Date().toISOString()
+  }, null, 2));
+});
+
+// Upload dist/query-stats.json alongside stats.json in your GitHub Action:
+// uses: actions/upload-artifact@v4
+// with:
+//   name: bundle-stats
+//   path: dist/`
+  };
 
   const steps = [
     {
-      title: 'Webhook Triggered',
-      icon: '🔔',
-      desc: 'GitHub sends a pull_request.opened event. The Express backend securely verifies the HMAC-SHA256 signature before processing anything.',
-      code: `app.webhooks.on('pull_request.opened', handlePR);
-app.webhooks.on('pull_request.synchronize', handlePR);
+      title: 'HMAC Webhook Verification',
+      subtitle: 'Step 1: Cryptographic Ingestion',
+      icon: '🛡️',
+      desc: 'GitHub sends pull_request.opened, synchronize, or closed events. The Express ingestion endpoint verifies the HMAC-SHA256 signature using your GitHub Webhook Secret before reading or dispatching payloads.',
+      code: `// apps/server/src/index.js
+app.post('/api/webhook', (req, res) => {
+  const signature = req.headers['x-hub-signature-256'];
+  const isValid = verifyHmacSignature(process.env.GITHUB_WEBHOOK_SECRET, req.rawBody, signature);
+  
+  if (!isValid) {
+    return res.status(401).json({ error: 'Invalid HMAC signature' });
+  }
 
-// Cryptographic webhook verification
-const signature = req.headers['x-hub-signature-256'];
-verify(secret, rawBody, signature); // rejects if tampered`
+  // Enqueue job or dispatch to webhook handler
+  handlePullRequestEvent(req.body);
+  return res.status(202).json({ received: true });
+});`
     },
     {
-      title: 'Fetch Performance Baseline',
+      title: 'Fetch Target Baseline',
+      subtitle: 'Step 2: Database Historical Query',
       icon: '📊',
-      desc: 'DeployGuard queries PostgreSQL to find the last known-good performance baseline for the target branch. Baselines are only updated on successful merges to main.',
-      code: `SELECT value, updated_at
+      desc: 'DeployGuard queries PostgreSQL to retrieve the last verified performance baseline on the target branch (e.g. main). Baselines are strictly isolated per repo and branch.',
+      code: `// Retrieve the latest verified benchmark for the base branch
+SELECT value, metric, updated_at
 FROM baselines
 WHERE repo_id = $1
   AND branch  = $2
-  AND metric  = 'bundle_kb'
-ORDER BY updated_at DESC
-LIMIT 1;`
+  AND metric  IN ('bundle_kb', 'query_count', 'api_p95_ms')
+ORDER BY updated_at DESC;`
     },
     {
-      title: 'Analyze Bundle & Diff Packages',
-      icon: '⚡',
-      desc: 'We fetch the new bundle size from CI artifacts and diff package.json between base→head to detect added, removed, or upgraded dependencies.',
-      code: `const bundleResult = await analyseBundle(octokit, headSha);
-const pkgDiff = await diffPackageJson(octokit, baseSha, headSha);
+      title: 'Artifact Extraction & Package Diff',
+      subtitle: 'Step 3: Asset Analysis',
+      icon: '📦',
+      desc: 'Octokit retrieves the bundle-stats artifact produced by GitHub Actions. DeployGuard calculates the exact asset delta and diffs package.json dependencies between base and head SHAs.',
+      code: `const bundleResult = await analyseBundle(octokit, owner, repo, headSha);
+const pkgDiff = await diffPackageJson(octokit, owner, repo, baseSha, headSha);
 
-// pkgDiff shape:
+// Diff structure:
 // {
-//   added:    ['framer-motion'],
-//   removed:  [],
-//   upgraded: [{ name: 'react', from: '18.2', to: '18.3' }]
+//   added:    ['@tanstack/react-query'],
+//   removed:  ['axios'],
+//   upgraded: [{ name: 'react', from: '18.2.0', to: '19.0.0' }]
 // }`
     },
     {
-      title: 'NLP Causation Engine (v2)',
+      title: 'NLP 3-Tier Classification',
+      subtitle: 'Step 4: Root Cause Intelligence',
       icon: '🧠',
-      desc: 'A Python FastAPI microservice runs a 3-tier classification pipeline: semantic embeddings via sentence-transformers → Groq LLM fallback for low-confidence commits → best-guess degradation.',
-      code: `# Tier 1 — Local ML (all-MiniLM-L6-v2 + LogisticRegression)
-embedding = model.encode(commit_message)      # 384-dim vector
-proba = classifier.predict_proba([embedding]) # 10-class scores
-confidence = proba.max()
+      desc: 'Commit messages, file diffs, and package modifications are dispatched to our Python FastAPI ML engine. A tiered pipeline classifies whether changes stem from bundle bloat, unindexed DB queries, or latency regressions.',
+      code: `# apps/nlp/main.py
+@app.post("/classify")
+async def classify_cause(payload: CommitContext):
+    # Tier 1: Local sentence-transformers (<50ms)
+    embedding = model.encode(payload.commit_message)
+    proba = classifier.predict_proba([embedding])
+    confidence = float(proba.max())
 
-if confidence >= 0.55:
-    return { "cause": label, "confidence": confidence }
+    if confidence >= 0.55:
+        return {"cause": classifier.classes_[proba.argmax()], "confidence": confidence}
 
-# Tier 2 — Groq LLM fallback (llama-3.1-8b-instant)
-if GROQ_API_KEY:
-    response = groq.chat(commit_message)
-    return { "cause": response.cause, "via_groq": True }
+    # Tier 2: Groq LLaMA 3.1 fallback (~200ms)
+    if GROQ_API_KEY:
+        return await groq_classify(payload.commit_message)
 
-# Tier 3 — Return best ML guess with low_confidence flag
-return { "cause": label, "confidence": confidence,
-         "low_confidence": True }`
+    # Tier 3: Deterministic best-guess fallback
+    return {"cause": classifier.classes_[proba.argmax()], "low_confidence": True}`
     },
     {
-      title: 'Threshold Pass / Fail Logic',
+      title: 'Threshold Evaluation',
+      subtitle: 'Step 5: Regression Check',
       icon: '⚖️',
-      desc: "We compare each metric delta against the repository's configurable thresholds (e.g. ±10% bundle size). All metrics must pass for the check to succeed.",
-      code: `const bundleDelta = ((after - before) / before) * 100;
+      desc: 'Deltas are compared against the repositories configurable safety margins. Every metric (bundle size, query count, latency) must be within tolerance for the check to pass.',
+      code: `const bundleDelta = ((headKb - baseKb) / baseKb) * 100;
+const queryDelta = headQueries - baseQueries;
 
-const metrics = [
-  { key: 'bundle_kb',  delta: bundleDelta,  threshold: 10 },
-  { key: 'api_p95_ms', delta: latencyDelta, threshold: 20 },
-];
+const passed = (
+  Math.abs(bundleDelta) <= repoThresholds.bundle_kb &&
+  queryDelta <= repoThresholds.query_count
+);
 
-const passed = metrics.every(m =>
-  Math.abs(m.delta) <= m.threshold
-);`
+const conclusion = passed ? 'success' : 'failure';`
     },
     {
-      title: 'Update GitHub & Database',
-      icon: '💾',
-      desc: 'We post a native Check Run (pass/fail) and an automated PR comment. Only when a PR merges to main and passes do we promote the baseline — preventing silent regressions.',
-      code: `await octokit.rest.checks.update({
+      title: 'Check Run & Baseline Promotion',
+      subtitle: 'Step 6: GitHub Feedback & Merge Gate',
+      icon: '🚀',
+      desc: 'DeployGuard updates the GitHub Check Run status and posts an in-place markdown comment on the PR with AI analysis. On merge to main, the baseline is promoted to guard future PRs.',
+      code: `// Post or update native GitHub Check Run
+await octokit.rest.checks.update({
+  check_run_id: checkId,
   conclusion: passed ? 'success' : 'failure',
-  output: { title: 'DeployGuard Report', summary }
+  output: {
+    title: passed ? 'DeployGuard: All Performance Gates Passed' : 'DeployGuard: Performance Regression Detected',
+    summary: buildCheckSummary(metrics, aiSummary)
+  }
 });
 
-await octokit.rest.issues.createComment({
-  body: buildComment(metrics, causes, pkgDiff)
-});
-
-// Strict baseline integrity — only on merge + pass
-if (isMainBranch && passed) {
-  await upsertBaseline(repoId, branch, 'bundle_kb', newKb);
+// Strict baseline protection: Only promote on merge + pass
+if (isMergeToMain && passed) {
+  await promoteBaseline(repoId, 'main', newMetrics);
 }`
     }
   ];
@@ -101,423 +256,561 @@ if (isMainBranch && passed) {
   const nlpTiers = [
     {
       tier: 'Tier 1',
-      label: 'Local ML Model',
-      color: '#3b82f6',
-      glow: 'rgba(59,130,246,0.15)',
-      detail: 'all-MiniLM-L6-v2 + LogisticRegression',
-      badge: '< 50ms · offline · 10 classes',
-      icon: '🤖',
-      condition: 'confidence ≥ 0.55 → return result',
+      label: 'Local ML Vector Classifier',
+      color: '#8B5CF6',
+      bg: 'rgba(139, 92, 246, 0.1)',
+      border: 'rgba(139, 92, 246, 0.3)',
+      latency: '< 50ms',
+      badge: 'Offline · Zero Token Cost',
+      tech: 'all-MiniLM-L6-v2 + LogisticRegression',
+      desc: 'Generates 384-dimensional dense semantic embeddings for commit titles and descriptions. Resolves the regression cause instantly when confidence is ≥ 0.55.'
     },
     {
       tier: 'Tier 2',
-      label: 'Groq LLM Fallback',
-      color: '#f59e0b',
-      glow: 'rgba(245,158,11,0.15)',
-      detail: 'llama-3.1-8b-instant (free tier)',
-      badge: '~200ms · only if GROQ_API_KEY set',
-      icon: '✨',
-      condition: 'if Groq unavailable → Tier 3',
+      label: 'Groq LLaMA 3.1 8B Instant',
+      color: '#06B6D4',
+      bg: 'rgba(6, 182, 212, 0.1)',
+      border: 'rgba(6, 182, 212, 0.3)',
+      latency: '~200ms',
+      badge: 'Escalation Fallback',
+      tech: 'llama-3.1-8b-instant (Groq LPU Engine)',
+      desc: 'Invoked automatically when Tier 1 confidence is below 0.55 or commits contain unstructured semantic changes. Returns a structured JSON diagnosis and actionable fix.'
     },
     {
       tier: 'Tier 3',
-      label: 'Best-Guess Fallback',
-      color: '#22c55e',
-      glow: 'rgba(34,197,94,0.15)',
-      detail: 'Returns top ML prediction',
-      badge: 'low_confidence: true in response',
-      icon: '🎯',
-      condition: 'always succeeds — never throws',
-    },
+      label: 'Deterministic Best-Guess Fallback',
+      color: '#10B981',
+      bg: 'rgba(16, 185, 129, 0.1)',
+      border: 'rgba(16, 185, 129, 0.3)',
+      latency: '< 1ms',
+      badge: 'High-Availability Sentinel',
+      tech: 'Softmax Probability Ranking',
+      desc: 'Guarantees that CI checks never hang or crash if external AI providers experience outages. Flags the response with low_confidence: true for transparency.'
+    }
   ];
 
-  const [popupStep, setPopupStep] = useState(null);
-  const [userInteracted, setUserInteracted] = useState(false);
-
-  useEffect(() => {
-    if (userInteracted || popupStep !== null) return;
-
-    const interval = setInterval(() => {
-      setActiveStep((s) => (s + 1) % steps.length);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, [steps.length, userInteracted, popupStep]);
-
-  const openStepDetails = (idx) => {
-    setUserInteracted(true);
-    setPopupStep(idx);
-  };
-
   return (
-    <>
-      <div className="fade-in pb-20">
-        {/* Header */}
-        <div className="text-center mb-16 mt-8">
-          <h1 className="text-5xl font-extrabold tracking-tight mb-4 text-white">
-            How <span className="text-blue-500">DeployGuard</span> Works
-          </h1>
-          <p className="text-slate-300 text-lg max-w-[640px] mx-auto leading-relaxed">
-            A transparent look at the event-driven architecture, semantic NLP pipeline,
-            and baseline logic that powers every PR check.
-          </p>
+    <div className="relative space-y-12 pb-24">
+      {/* Ambient background glow orbs */}
+      <div className="glow-orb-violet -top-20 -left-20" />
+      <div className="glow-orb-cyan top-96 -right-20" />
+
+      {/* Hero Header */}
+      <div className="relative z-10 pt-4">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-mono mb-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+          DEPLOYGUARD DEVELOPER PLATFORM &amp; CI INTEGRATION
         </div>
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white mb-4">
+          Architecture &amp; <span className="text-gradient-violet">Developer Documentation</span>
+        </h1>
+        <p className="text-[#9CA3AF] text-sm sm:text-base max-w-3xl leading-relaxed">
+          DeployGuard protects your production builds by monitoring bundle bloat, database query regressions,
+          and API latency directly inside GitHub Pull Requests. Review the integration workflow and the 
+          underlying 3-tier NLP engine below.
+        </p>
 
-        {/* Step cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-[1080px] mx-auto mb-20">
-          {steps.map((step, idx) => {
-            const isActive = idx === activeStep;
-            return (
-              <div
-                key={idx}
-                onClick={() => openStepDetails(idx)}
-                className={`bg-[#0f1629]/75 rounded-2xl p-6 cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[190px] border transition-all duration-300 ${
-                  isActive
-                    ? 'border-blue-500 -translate-y-1 shadow-[0_8px_30px_rgba(59,130,246,0.15)]'
-                    : 'border-[#1e2d4a]/80 hover:border-blue-500/50 hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)]'
-                } group`}
-              >
-                <div>
-                  {/* Step counter badge */}
-                  <div
-                    className={`absolute top-4 right-4 border rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider transition-colors duration-300 ${
-                      isActive ? 'bg-blue-500/12 border-blue-500 text-blue-500' : 'bg-[#070b14] border-[#1e2d4a]/80 text-slate-400'
-                    }`}
-                  >
-                    {idx + 1} / {steps.length}
-                  </div>
-
-                  <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg border flex-shrink-0 transition-colors duration-300 ${
-                        isActive ? 'bg-blue-500/10 border-blue-500' : 'bg-[#070b14] border-[#1e2d4a]/80'
-                      }`}
-                    >
-                      {step.icon}
-                    </div>
-                    <h3 className="text-base font-bold text-white leading-tight">
-                      {step.title}
-                    </h3>
-                  </div>
-
-                  <p className="text-slate-300 text-sm leading-relaxed mb-2">
-                    {step.desc}
-                  </p>
-                </div>
-
-                <div className="flex justify-end mt-4">
-                  <span className="text-xs font-bold text-blue-500 inline-flex items-center gap-1 transition-all duration-200 group-hover:translate-x-1">
-                    Read More <span className="text-[10px]">→</span>
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* NLP 3-Tier Pipeline section */}
-        <div className="max-w-[860px] mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-extrabold tracking-tight mb-2 text-white">
-              🧠 NLP 3-Tier Classification Pipeline
-            </h2>
-            <p className="text-slate-300 text-sm max-w-[560px] mx-auto leading-relaxed">
-              Every commit message travels through these tiers in order — escalating only when the local model isn't confident enough.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-0">
-            {nlpTiers.map((tier, i) => (
-              <div key={i} className="flex flex-col items-center">
-                <div
-                  className="w-full bg-[#0f1629]/75 rounded-xl p-5 flex items-center gap-5 transition-shadow duration-200 shadow-lg border"
-                  style={{
-                    border: `1px solid ${tier.color}44`,
-                    boxShadow: `0 0 0 1px ${tier.color}22, 0 4px 24px ${tier.glow}`,
-                  }}
-                >
-                  <div
-                    className="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center text-xl border"
-                    style={{
-                      background: tier.glow,
-                      borderColor: `${tier.color}66`,
-                    }}
-                  >
-                    {tier.icon}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5 mb-1 flex-wrap">
-                      <span
-                        className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border"
-                        style={{
-                          color: tier.color,
-                          background: tier.glow,
-                          borderColor: `${tier.color}44`,
-                        }}
-                      >
-                        {tier.tier}
-                      </span>
-                      <span className="text-base font-bold text-white">{tier.label}</span>
-                    </div>
-                    <div className="text-xs text-slate-300 mb-1">{tier.detail}</div>
-                    <div className="text-xs text-slate-500 font-mono">{tier.badge}</div>
-                  </div>
-
-                  <div
-                    className="text-xs font-semibold whitespace-nowrap flex-shrink-0 max-w-[200px] text-center leading-relaxed border rounded-lg px-3 py-1.5"
-                    style={{
-                      color: tier.color,
-                      background: tier.glow,
-                      borderColor: `${tier.color}33`,
-                    }}
-                  >
-                    {tier.condition}
-                  </div>
-                </div>
-
-                {/* Connector Arrow */}
-                {i < nlpTiers.length - 1 && (
-                  <div className="flex flex-col items-center py-1 gap-0.5">
-                    <div className="w-[2px] h-3 bg-[#1e2d4a]/80" />
-                    <div className="text-[10px] text-slate-500 font-semibold tracking-wider">low confidence</div>
-                    <div className="w-[2px] h-3 bg-[#1e2d4a]/80" />
-                    <div className="text-sm text-slate-500">▼</div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Model Output Example */}
-          <div className="mt-8 bg-[#0d1117] rounded-xl border border-[#21262d] p-5">
-            <div className="text-xs text-slate-500 font-semibold tracking-widest uppercase mb-3">
-              📦 Example classifier response (v2)
-            </div>
-            <pre className="m-0 text-xs text-[#c9d1d9] font-mono leading-relaxed">
-              <code>{`{
-  "cause":         "bundle_size",
-  "confidence":    0.94,
-  "model_version": "v2-sentence-transformers",
-  "via_groq":      false,
-  "all_scores": {
-    "bundle_size":       0.94,
-    "query_regression":  0.03,
-    "latency_spike":     0.02,
-    "dependency_bloat":  0.01
-  }
-}`}</code>
-            </pre>
-          </div>
-        </div>
-
-        {/* ── AI Features Section ─────────────────────────────────────────── */}
-        <div className="max-w-[860px] mx-auto mt-20">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-extrabold tracking-tight mb-2 text-white">
-              ✨ AI-Powered Summaries &amp; Explanations
-            </h2>
-            <p className="text-slate-300 text-sm max-w-[600px] mx-auto leading-relaxed">
-              Every PR check is accompanied by a natural-language analysis generated by Groq's
-              <code className="text-blue-400 mx-1">llama-3.1-8b-instant</code>
-              — routed through the NLP microservice with a direct Node.js fallback.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            {[
-              {
-                icon: '✅',
-                title: 'Pass Summary',
-                color: '#22c55e',
-                glow: 'rgba(34,197,94,0.12)',
-                when: 'All metrics within threshold',
-                desc: 'A concise 2–3 sentence summary of what the PR changed and why it is safe to merge. Highlights the delta, which packages were involved, and confirms no regression was detected.',
-                endpoint: 'POST /summarize',
-              },
-              {
-                icon: '⚠️',
-                title: 'Regression Explanation',
-                color: '#f59e0b',
-                glow: 'rgba(245,158,11,0.12)',
-                when: 'One or more metrics exceed threshold',
-                desc: 'A structured markdown explanation of what regressed, what likely caused it (cross-referenced with the NLP classifier), and actionable copy-pasteable fix suggestions.',
-                endpoint: 'POST /explain',
-              },
-              {
-                icon: '📊',
-                title: 'Project Health Review',
-                color: '#3b82f6',
-                glow: 'rgba(59,130,246,0.12)',
-                when: 'On-demand from the dashboard',
-                desc: 'An aggregated health report across all historical checks — structured as Strengths, Risks, and Recommendations. Powered by cumulative pass/fail rates, average bundle size, and most common regression causes.',
-                endpoint: 'POST /review',
-              },
-            ].map((card, i) => (
-              <div
-                key={i}
-                className="rounded-2xl p-5 flex flex-col gap-3 border"
-                style={{ background: card.glow, borderColor: `${card.color}33` }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{card.icon}</span>
-                  <span className="font-bold text-white text-sm">{card.title}</span>
-                </div>
-                <div
-                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border self-start"
-                  style={{ color: card.color, borderColor: `${card.color}55`, background: `${card.color}18` }}
-                >
-                  {card.when}
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed flex-1">{card.desc}</p>
-                <code
-                  className="text-[10px] font-mono px-2 py-1 rounded-lg self-start"
-                  style={{ color: card.color, background: `${card.color}18` }}
-                >
-                  {card.endpoint}
-                </code>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-[#0d1117] rounded-xl border border-[#21262d] p-5">
-            <div className="text-xs text-slate-500 font-semibold tracking-widest uppercase mb-3">
-              🔁 AI routing — NLP service → direct Groq fallback
-            </div>
-            <pre className="m-0 text-xs text-[#c9d1d9] font-mono leading-relaxed">
-              <code>{`// groqExplain.js — tries NLP service first, falls back to Groq directly
-async function getAIExplanation(params) {
-  try {
-    // Route through NLP microservice (preferred — better prompt engineering)
-    const res = await nlpClient.post('/explain', params, { timeout: 20_000 });
-    return res.data.explanation;
-  } catch {
-    // Direct Groq call if NLP service is cold-starting or unavailable
-    return callGroqDirect(params);
-  }
-}`}</code>
-            </pre>
-          </div>
-        </div>
-
-        {/* ── Threshold Configuration Section ────────────────────────────── */}
-        <div className="max-w-[860px] mx-auto mt-20 mb-12">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-extrabold tracking-tight mb-2 text-white">
-              ⚖️ Configurable Performance Thresholds
-            </h2>
-            <p className="text-slate-300 text-sm max-w-[580px] mx-auto leading-relaxed">
-              Every connected repository has its own independent threshold configuration.
-              Defaults are deliberately conservative — tighten or relax them to match your team's standards.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            {[
-              { icon: '📦', metric: 'Bundle Size', default: '±10%', unit: 'Percentage delta', desc: 'Maximum allowed growth in total JS + CSS bundle size relative to the last recorded baseline on the target branch.' },
-              { icon: '🔍', metric: 'DB Query Count', default: '±20 queries', unit: 'Absolute delta', desc: 'Maximum increase in database queries per request cycle. Catches N+1 patterns and unbounded fetch loops early.' },
-              { icon: '⚡', metric: 'API p95 Latency', default: '±20%', unit: 'Percentage delta', desc: 'Maximum allowed increase in the 95th percentile API response time. Guards against blocking I/O and unoptimised middleware.' },
-            ].map((t, i) => (
-              <div key={i} className="bg-[#0f1629]/75 border border-[#1e2d4a]/60 rounded-2xl p-5">
-                <div className="text-xl mb-2">{t.icon}</div>
-                <div className="font-bold text-white text-sm mb-1">{t.metric}</div>
-                <div className="text-blue-400 font-mono text-xs mb-3">Default: {t.default}</div>
-                <p className="text-xs text-slate-400 leading-relaxed">{t.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-[#0f1629]/75 border border-[#1e2d4a]/60 rounded-2xl p-6 flex flex-col md:flex-row gap-6 items-start">
-            <div className="flex-1">
-              <h3 className="text-sm font-bold text-white mb-2">How to change thresholds</h3>
-              <ol className="text-xs text-slate-400 space-y-2 list-decimal list-inside leading-relaxed">
-                <li>Log in to the dashboard with GitHub OAuth</li>
-                <li>Click a repository card to open its detail view</li>
-                <li>Click <strong className="text-white">Settings</strong> in the top-right</li>
-                <li>Drag the sliders or type values for bundle size, query count, and API latency</li>
-                <li>Click <strong className="text-white">Save Thresholds</strong> — changes apply to the next PR check immediately</li>
-              </ol>
-            </div>
-            <div className="bg-[#0d1117] rounded-xl border border-[#21262d] p-4 text-xs font-mono text-[#c9d1d9] md:w-[320px] flex-shrink-0">
-              <div className="text-slate-500 text-[10px] uppercase tracking-widest mb-2">PUT /api/repos/:owner/:name/thresholds</div>
-              <pre className="m-0 leading-relaxed">{`{
-  "bundle_kb":   10,   // % delta allowed
-  "query_count": 20,   // absolute delta
-  "api_p95_ms":  20    // % delta allowed
-}`}</pre>
-            </div>
-          </div>
+        {/* Section Navigation Tabs */}
+        <div className="flex flex-wrap gap-2 mt-8 p-1.5 bg-[#0E1118]/80 backdrop-blur-xl border border-white/[0.08] rounded-xl w-fit">
+          {[
+            { id: 'setup', label: '🚀 CI Setup & Workflows' },
+            { id: 'architecture', label: '⚡ 6-Step Event Engine' },
+            { id: 'nlp', label: '🧠 3-Tier NLP Pipeline' },
+            { id: 'thresholds', label: '⚖️ Performance Thresholds' },
+            { id: 'faq', label: '💡 Security & FAQs' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSection(tab.id)}
+              className={`px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                activeSection === tab.id
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-[0_0_15px_rgba(124,58,237,0.4)]'
+                  : 'text-[#9CA3AF] hover:text-white hover:bg-white/[0.04]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-
-      {/* Pop-up Modal */}
-      {popupStep !== null && (() => {
-        const step = steps[popupStep];
-        return (
-          <div
-            className="fixed inset-0 z-[999] flex items-center justify-center bg-[#070b14]/85 backdrop-blur-md p-6 animate-[fadeIn_0.25s_ease-out_forwards]"
-            onClick={() => setPopupStep(null)}
-          >
-            <div
-              className="bg-[#0f1629] border border-[#1e2d4a]/85 rounded-3xl p-10 max-w-[800px] w-full max-h-[90vh] overflow-y-auto shadow-2xl relative animate-[scaleIn_0.3s_cubic-bezier(0.34,1.56,0.64,1)_forwards]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close Button */}
-              <button
-                onClick={() => setPopupStep(null)}
-                className="absolute top-5 right-5 bg-white/5 border border-[#1e2d4a]/80 rounded-full w-9 h-9 flex items-center justify-center text-slate-300 text-base cursor-pointer transition-all hover:bg-red-500/10 hover:border-red-500/35 hover:text-red-500 hover:rotate-90"
-              >
-                ✕
-              </button>
-
-              {/* Step counter */}
-              <div className="inline-flex bg-blue-500/12 border border-blue-500 rounded-full px-3 py-1 text-xs font-bold text-blue-500 tracking-widest mb-6 uppercase">
-                Step {popupStep + 1} of {steps.length}
-              </div>
-
-              {/* Header */}
-              <div className="flex items-center gap-5 mb-6">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/15 border border-blue-500 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-                  {step.icon}
-                </div>
-                <div>
-                  <h2 className="text-3xl font-extrabold text-white m-0 tracking-tight">
-                    {step.title}
-                  </h2>
-                </div>
-              </div>
-
-              {/* Description */}
-              <p className="text-slate-300 text-base leading-relaxed mb-8">
-                {step.desc}
+      {/* ========================================================================= */}
+      {/* SECTION 1: CI SETUP & ONBOARDING (REPLACES STANDALONE SETUP MODAL) */}
+      {/* ========================================================================= */}
+      {activeSection === 'setup' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="space-y-8 relative z-10"
+        >
+          {/* Setup Mode Switcher */}
+          <div className="panel flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>Repository Onboarding</span>
+                <span className="text-[11px] font-mono font-normal text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  Zero Maintenance
+                </span>
+              </h2>
+              <p className="text-xs text-[#9CA3AF] mt-1">
+                Choose between automated one-click PR generation or manual workflow customization.
               </p>
+            </div>
 
-              {/* Code title */}
-              <div className="text-xs text-slate-500 font-semibold tracking-widest uppercase mb-3 flex items-center gap-2">
-                <span>🖥️</span>
-                <span>Implementation Example</span>
-              </div>
+            <div className="flex bg-[#08090C] p-1 rounded-lg border border-white/[0.08] text-xs font-mono">
+              <button
+                onClick={() => setSetupMode('auto')}
+                className={`px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+                  setupMode === 'auto'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'text-[#9CA3AF] hover:text-white'
+                }`}
+              >
+                Automated (Recommended)
+              </button>
+              <button
+                onClick={() => setSetupMode('manual')}
+                className={`px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+                  setupMode === 'manual'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'text-[#9CA3AF] hover:text-white'
+                }`}
+              >
+                Manual YAML Template
+              </button>
+            </div>
+          </div>
 
-              {/* Code */}
-              <div className="bg-[#0d1117] rounded-xl p-5 border border-[#21262d] overflow-x-auto shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
-                <pre className="m-0 text-xs text-[#c9d1d9] font-mono leading-relaxed whitespace-pre-wrap">
-                  <code>{step.code}</code>
-                </pre>
-              </div>
+          {setupMode === 'auto' ? (
+            /* Automated Setup Flow */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {[
+                {
+                  step: '01',
+                  title: 'Install GitHub App',
+                  desc: 'Grant DeployGuard permission to your repository. The app requires Checks, Pull Requests, and Repository Metadata permissions.',
+                  action: (
+                    <GsapMagnetic strength={0.3}>
+                      <a
+                        href="https://github.com/apps/deployguard-saksham842"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary text-xs shadow-lg mt-3"
+                      >
+                        Install GitHub App →
+                      </a>
+                    </GsapMagnetic>
+                  )
+                },
+                {
+                  step: '02',
+                  title: 'Automated Bundler Detection',
+                  desc: 'DeployGuard scans package.json in the default branch, detects whether you use Vite, Next.js, or Webpack, and drafts the tailored workflow file.',
+                  tag: 'Vite · Next.js · Webpack'
+                },
+                {
+                  step: '03',
+                  title: 'Merge the Setup PR',
+                  desc: 'DeployGuard commits .github/workflows/deployguard.yml to branch deployguard/setup and opens a PR. Once merged, performance baseline tracking goes live.',
+                  tag: 'Instant Baseline Activation'
+                }
+              ].map((card, idx) => (
+                <div key={idx} className="card relative flex flex-col justify-between p-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="font-mono text-2xl font-black text-violet-400/40">
+                        {card.step}
+                      </span>
+                      {card.tag && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.08] text-[#9CA3AF]">
+                          {card.tag}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-base font-bold text-white mb-2">{card.title}</h3>
+                    <p className="text-xs text-[#9CA3AF] leading-relaxed">{card.desc}</p>
+                  </div>
+                  {card.action && <div className="mt-4">{card.action}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Manual YAML Template with Bundler Tabs */
+            <div className="panel space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-white/[0.08]">
+                <div className="flex gap-2">
+                  {[
+                    { id: 'vite', label: 'Vite Workflow' },
+                    { id: 'next', label: 'Next.js Workflow' },
+                    { id: 'db', label: 'Query Tracker Hook' },
+                  ].map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setBundlerTab(b.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                        bundlerTab === b.id
+                          ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                          : 'text-[#9CA3AF] hover:text-white bg-white/[0.02]'
+                      }`}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
 
-              {/* Actions */}
-              <div className="flex justify-end mt-8">
                 <button
-                  onClick={() => setPopupStep(null)}
-                  className="btn btn-primary px-7 py-2.5 text-xs rounded-xl font-bold"
+                  onClick={() => copyToClipboard(manualWorkflows[bundlerTab], bundlerTab)}
+                  className="btn btn-ghost text-xs font-mono flex items-center gap-1.5 cursor-pointer"
                 >
-                  Got It
+                  {copiedKey === bundlerTab ? (
+                    <>
+                      <span className="text-emerald-400">✓</span>
+                      <span className="text-emerald-400">Copied to Clipboard!</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📋</span>
+                      <span>Copy Snippet</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="relative">
+                <div className="text-[11px] font-mono text-[#9CA3AF] mb-2">
+                  {bundlerTab === 'db' ? (
+                    <span>Save in your test suite harness or test setup file:</span>
+                  ) : (
+                    <span>Save to <code className="text-violet-400 font-bold">.github/workflows/deployguard.yml</code>:</span>
+                  )}
+                </div>
+                <div className="bg-[#08090C] border border-white/[0.08] rounded-xl p-4 overflow-x-auto max-h-[380px]">
+                  <pre className="text-xs font-mono text-[#E8EAED] leading-relaxed">
+                    <code>{manualWorkflows[bundlerTab]}</code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 2: 6-STEP EVENT ARCHITECTURE */}
+      {/* ========================================================================= */}
+      {activeSection === 'architecture' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="space-y-8 relative z-10"
+        >
+          <div className="panel">
+            <h2 className="text-lg font-bold text-white mb-1">
+              Event-Driven Verification Loop
+            </h2>
+            <p className="text-xs text-[#9CA3AF]">
+              Every pull request triggers an automated 6-step lifecycle from HMAC webhook ingestion to GitHub Check Run updates.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Step navigation list */}
+            <div className="lg:col-span-5 space-y-2">
+              {steps.map((s, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setActiveStep(idx)}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
+                    activeStep === idx
+                      ? 'bg-violet-500/15 border-violet-500/50 shadow-[0_0_20px_rgba(124,58,237,0.2)]'
+                      : 'bg-[#0E1118]/80 border-white/[0.08] hover:border-white/[0.2] hover:bg-white/[0.02]'
+                  }`}
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${
+                    activeStep === idx ? 'bg-violet-500/20 text-white' : 'bg-white/[0.05] text-[#9CA3AF]'
+                  }`}>
+                    {s.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-mono text-violet-400 uppercase tracking-wider">
+                      {s.subtitle}
+                    </div>
+                    <div className="text-xs font-bold text-white truncate">
+                      {s.title}
+                    </div>
+                  </div>
+                  <span className="text-xs text-[#9CA3AF] font-mono">
+                    0{idx + 1}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Step code & detailed preview */}
+            <div className="lg:col-span-7 panel flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{steps[activeStep].icon}</span>
+                    <h3 className="text-sm font-bold text-white">
+                      {steps[activeStep].title}
+                    </h3>
+                  </div>
+                  <span className="text-xs font-mono text-violet-400 px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20">
+                    Step {activeStep + 1} of {steps.length}
+                  </span>
+                </div>
+
+                <p className="text-xs text-[#9CA3AF] leading-relaxed mb-4">
+                  {steps[activeStep].desc}
+                </p>
+
+                <div className="relative">
+                  <div className="flex items-center justify-between bg-[#08090C] px-3 py-1.5 border-t border-x border-white/[0.08] rounded-t-lg">
+                    <span className="text-[10px] font-mono text-[#6B7280]">Implementation Snippet</span>
+                    <button
+                      onClick={() => copyToClipboard(steps[activeStep].code, `step-${activeStep}`)}
+                      className="text-[10px] font-mono text-violet-400 hover:text-violet-300 cursor-pointer"
+                    >
+                      {copiedKey === `step-${activeStep}` ? '✓ Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <div className="bg-[#08090C] border border-white/[0.08] rounded-b-lg p-3 overflow-x-auto max-h-64">
+                    <pre className="text-xs font-mono text-[#E8EAED] leading-relaxed">
+                      <code>{steps[activeStep].code}</code>
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 mt-4 border-t border-white/[0.08]">
+                <button
+                  disabled={activeStep === 0}
+                  onClick={() => setActiveStep(prev => prev - 1)}
+                  className="btn btn-ghost text-xs disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  ← Previous Step
+                </button>
+                <button
+                  disabled={activeStep === steps.length - 1}
+                  onClick={() => setActiveStep(prev => prev + 1)}
+                  className="btn btn-primary text-xs disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  Next Step →
                 </button>
               </div>
             </div>
           </div>
-        );
-      })()}
-    </>
+        </motion.div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 3: 3-TIER NLP CAUSATION ENGINE */}
+      {/* ========================================================================= */}
+      {activeSection === 'nlp' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="space-y-8 relative z-10"
+        >
+          <div className="panel">
+            <h2 className="text-lg font-bold text-white mb-1">
+              3-Tier Semantic Classification Pipeline
+            </h2>
+            <p className="text-xs text-[#9CA3AF]">
+              DeployGuard combines local vector embeddings for sub-millisecond execution with Groq LLaMA 3.1 LLM fallback for deep architectural context.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {nlpTiers.map((tier, idx) => (
+              <div
+                key={idx}
+                className="card relative flex flex-col justify-between p-6"
+                style={{
+                  borderColor: tier.border,
+                  boxShadow: `0 0 25px -10px ${tier.color}22`
+                }}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span
+                      className="text-xs font-mono font-bold px-2 py-0.5 rounded"
+                      style={{ color: tier.color, background: tier.bg, border: `1px solid ${tier.border}` }}
+                    >
+                      {tier.tier}
+                    </span>
+                    <span className="text-[11px] font-mono text-[#9CA3AF]">
+                      {tier.latency}
+                    </span>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-white mb-1">{tier.label}</h3>
+                  <div className="text-[11px] font-mono text-violet-400 mb-3">{tier.tech}</div>
+                  <p className="text-xs text-[#9CA3AF] leading-relaxed">{tier.desc}</p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-white/[0.08] text-[10px] font-mono text-[#6B7280]">
+                  {tier.badge}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Sample Classifier Response */}
+          <div className="panel space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white">Example NLP Diagnostic Payload</span>
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                Live Schema v2
+              </span>
+            </div>
+            <div className="bg-[#08090C] border border-white/[0.08] rounded-xl p-4 overflow-x-auto">
+              <pre className="text-xs font-mono text-[#E8EAED] leading-relaxed">
+                <code>{`{
+  "cause": "bundle_bloat",
+  "confidence": 0.942,
+  "tier_executed": "tier_1_local_ml",
+  "latency_ms": 38,
+  "top_features": [
+    "added full-bundle lodash import instead of lodash-es",
+    "framer-motion bundle chunk increase (+142 KB)"
+  ],
+  "recommendation": "Import methods directly: import debounce from 'lodash/debounce';"
+}`}</code>
+              </pre>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 4: CONFIGURABLE PERFORMANCE THRESHOLDS */}
+      {/* ========================================================================= */}
+      {activeSection === 'thresholds' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="space-y-8 relative z-10"
+        >
+          <div className="panel">
+            <h2 className="text-lg font-bold text-white mb-1">
+              Per-Repository Guardrails
+            </h2>
+            <p className="text-xs text-[#9CA3AF]">
+              Tune tolerances per repository from the repository settings dashboard or update them programmatically via our REST API.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              {
+                icon: '📦',
+                name: 'Bundle Growth Limit',
+                key: 'bundle_kb',
+                defaultVal: '±10%',
+                unit: 'Percentage Delta',
+                desc: 'Maximum percentage increase in JavaScript & CSS bundle assets allowed relative to the target branch baseline.'
+              },
+              {
+                icon: '🔍',
+                name: 'Database Query Spike',
+                key: 'query_count',
+                defaultVal: '±20 queries',
+                unit: 'Absolute Count',
+                desc: 'Maximum increase in SQL queries executed during test runs. Catches N+1 query patterns before deployment.'
+              },
+              {
+                icon: '⚡',
+                name: 'API p95 Latency',
+                key: 'api_p95_ms',
+                defaultVal: '±20%',
+                unit: 'Percentage Delta',
+                desc: 'Prevents blocking event loop work and sluggish database indexes by catching latency degradation early.'
+              }
+            ].map((metric, idx) => (
+              <div key={idx} className="card p-6">
+                <div className="text-2xl mb-3">{metric.icon}</div>
+                <h3 className="text-sm font-bold text-white mb-1">{metric.name}</h3>
+                <div className="text-xs font-mono text-violet-400 mb-2">Key: {metric.key}</div>
+                <div className="inline-block px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[11px] font-mono mb-3">
+                  Default: {metric.defaultVal} ({metric.unit})
+                </div>
+                <p className="text-xs text-[#9CA3AF] leading-relaxed">{metric.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* REST API Example */}
+          <div className="panel space-y-3">
+            <div className="text-xs font-bold text-white">REST API Threshold Mutation</div>
+            <div className="bg-[#08090C] border border-white/[0.08] rounded-xl p-4 overflow-x-auto">
+              <pre className="text-xs font-mono text-[#E8EAED] leading-relaxed">
+                <code>{`PUT /api/repos/:owner/:name/thresholds
+Content-Type: application/json
+Authorization: Bearer <dg_token>
+
+{
+  "bundle_kb": 8,       // Fail if bundle size increases > 8%
+  "query_count": 15,    // Fail if test query count increases > 15
+  "api_p95_ms": 15      // Fail if p95 response time degrades > 15%
+}`}</code>
+              </pre>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 5: SECURITY & FAQS */}
+      {/* ========================================================================= */}
+      {activeSection === 'faq' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="space-y-6 relative z-10"
+        >
+          <div className="panel">
+            <h2 className="text-lg font-bold text-white mb-1">
+              Security Architecture &amp; FAQs
+            </h2>
+            <p className="text-xs text-[#9CA3AF]">
+              DeployGuard is engineered with a strict zero-code-leak security model.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[
+              {
+                q: 'Does source code ever leave our GitHub runner?',
+                a: 'Never. Your GitHub Actions runner executes the compilation locally inside your own runner container. Only the generated metadata stats.json file (asset names and byte sizes) is uploaded as a build artifact.'
+              },
+              {
+                q: 'Which bundlers and frameworks are supported?',
+                a: 'Out of the box: Vite, Next.js (App & Pages routers), Webpack 5, and Create React App. Any build tool that produces static assets can emit a simple { format: "custom", assets: [...] } stats file.'
+              },
+              {
+                q: 'How does DeployGuard prevent baseline drift?',
+                a: 'Baselines are only promoted when a pull request is merged into your production branch (main/master) AND has passed all performance thresholds. Regressed branches never pollute the baseline.'
+              },
+              {
+                q: 'What GitHub App permissions does DeployGuard require?',
+                a: 'DeployGuard requires read/write access to Checks (to emit Check Runs), Pull Requests (to leave interactive regression comments), and read access to repository contents.'
+              }
+            ].map((faq, idx) => (
+              <div key={idx} className="card p-6">
+                <h3 className="text-sm font-bold text-white mb-2">{faq.q}</h3>
+                <p className="text-xs text-[#9CA3AF] leading-relaxed">{faq.a}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
   );
 }
