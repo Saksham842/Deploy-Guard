@@ -75,7 +75,7 @@ export default function Login() {
             </div>
 
             {/* Simulated Live CI Telemetry Terminal */}
-            <div className="relative rounded-2xl border border-white/[0.12] bg-[#0D1017]/95 backdrop-blur-2xl shadow-[0_25px_50px_rgba(0,0,0,0.6)] overflow-hidden min-h-[290px] flex flex-col justify-between w-full">
+            <div className="relative rounded-2xl border border-white/[0.12] bg-[#0D1017]/95 backdrop-blur-2xl shadow-[0_25px_50px_rgba(0,0,0,0.6)] overflow-hidden min-h-[345px] flex flex-col justify-between w-full">
               {/* Top window bar */}
               <div className="px-6 py-3.5 bg-[#151922] border-b border-white/[0.08] flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -90,8 +90,8 @@ export default function Login() {
               </div>
 
               {/* Terminal body with Three.js Hologram floating in corner */}
-              <div className="p-6 sm:p-7 pr-44 sm:pr-56 font-mono text-xs sm:text-[13px] space-y-2.5 relative flex-1 flex flex-col justify-between">
-                <div className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-6 w-48 h-48 sm:w-56 sm:h-56 opacity-85 pointer-events-none">
+              <div className="p-6 sm:p-7 pr-44 sm:pr-56 font-mono text-xs sm:text-[13px] space-y-3.5 relative flex-1 flex flex-col justify-between">
+                <div className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-6 w-52 h-52 sm:w-60 sm:h-60 opacity-85 pointer-events-none">
                   <ThreeCanvas />
                 </div>
 
@@ -121,7 +121,7 @@ export default function Login() {
                   <span>API latency p95: <strong>42ms</strong> (-8ms / -16% vs main branch)</span>
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-white/[0.08] flex items-center justify-between text-xs">
+                <div className="pt-4 mt-3 border-t border-white/[0.08] flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2.5 text-emerald-400 font-bold">
                     <span className="relative flex h-2.5 w-2.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
