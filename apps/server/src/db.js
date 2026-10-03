@@ -151,6 +151,24 @@ async function updateRepoSetup(repoId, fields) {
   );
 }
 
+/**
+ * Delete all repos associated with an installation ID (when app is uninstalled).
+ * Cascades to checks and baselines automatically.
+ */
+async function deleteReposByInstallId(installId) {
+  const { rowCount } = await pool.query('DELETE FROM repos WHERE install_id = $1', [installId]);
+  return rowCount;
+}
+
+/**
+ * Delete a single repo by its GitHub repository ID (when removed from installation).
+ * Cascades to checks and baselines automatically.
+ */
+async function deleteRepoByGithubId(githubRepoId) {
+  const { rowCount } = await pool.query('DELETE FROM repos WHERE github_repo_id = $1', [githubRepoId]);
+  return rowCount;
+}
+
 // ─── Baselines ───────────────────────────────────────────────────────────────
 
 /**
@@ -390,6 +408,8 @@ module.exports = {
   getRepoByGithubId,
   listRepos,
   updateRepoSetup,
+  deleteReposByInstallId,
+  deleteRepoByGithubId,
   getBaseline,
   upsertBaseline,
   saveCheck,

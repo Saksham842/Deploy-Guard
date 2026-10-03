@@ -29,6 +29,8 @@ const {
   getCheckByRepoPrSha,
   getThresholds,
   updateRepoSetup,
+  deleteReposByInstallId,
+  deleteRepoByGithubId,
 } = require('./db');
 
 // ---------------------------------------------------------------------------
@@ -53,7 +55,9 @@ app.webhooks.on('pull_request.opened',      handlePR);
 app.webhooks.on('pull_request.synchronize', handlePR);
 app.webhooks.on('pull_request.reopened',    handlePR);
 app.webhooks.on('installation.created',                handleInstallation);
+app.webhooks.on('installation.deleted',                handleInstallationDeleted);
 app.webhooks.on('installation_repositories.added',     handleInstallation);
+app.webhooks.on('installation_repositories.removed',   handleInstallationReposRemoved);
 app.webhooks.on('workflow_run.completed',              handleWorkflowRun);
 
 app.webhooks.onError((error) => {
@@ -453,6 +457,36 @@ async function handleInstallation({ octokit, payload }) {
       await createSetupPR({ octokit, owner, repoName, defaultBranch, buildTool, repoId: dbRepo.id });
     } catch (err) {
       console.error(`[webhook] Failed to sync repo "${repo.name}":`, err.message);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// handleInstallationDeleted — cleans up database when app is uninstalled
+// ---------------------------------------------------------------------------
+async function handleInstallationDeleted({ payload }) {
+  const installId = payload.installation?.id;
+  if (!installId) return;
+  console.log(`[webhook] Installation #${installId} deleted: removing all associated repos from database`);
+  try {
+    const count = await deleteReposByInstallId(installId);
+    console.log(`[webhook] Removed ${count} repo(s) for installation #${installId}`);
+  } catch (err) {
+    console.error(`[webhook] Error cleaning up installation #${installId}:`, err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// handleInstallationReposRemoved — cleans up repos removed from an installation
+// ---------------------------------------------------------------------------
+async function handleInstallationReposRemoved({ payload }) {
+  const removed = payload.repositories_removed || [];
+  for (const repo of removed) {
+    console.log(`[webhook] Repo removed: ${repo.full_name} (${repo.id})`);
+    try {
+      await deleteRepoByGithubId(repo.id);
+    } catch (err) {
+      console.error(`[webhook] Error removing repo ${repo.full_name}:`, err.message);
     }
   }
 }
