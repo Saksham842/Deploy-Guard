@@ -114,6 +114,51 @@ async function handlePR({ octokit, payload }) {
 
     if (!hasWorkflow) {
       console.log(`[webhook] PR #${prNumber}: DeployGuard workflow missing on branch ${headSha.slice(0, 7)}`);
+
+      // Attempt to auto-commit deployguard.yml directly into the active PR branch
+      const isInternalBranch = !pull_request.head?.repo?.fork;
+      const headBranch = pull_request.head?.ref;
+      let autoCommitted = false;
+
+      if (isInternalBranch && headBranch && octokit.rest.repos?.createOrUpdateFileContents) {
+        try {
+          const detectedTool = dbRepo?.build_tool || (octokit.rest.repos?.getContent ? await detectBuildTool(octokit, owner, repoName, headBranch) : 'vite');
+          const workflowContent = Buffer.from(generateWorkflow(detectedTool || 'vite')).toString('base64');
+
+          await octokit.rest.repos.createOrUpdateFileContents({
+            owner: pull_request.head?.repo?.owner?.login || owner,
+            repo:  pull_request.head?.repo?.name || repoName,
+            path:  '.github/workflows/deployguard.yml',
+            message: 'ci: add DeployGuard bundle analysis workflow',
+            content: workflowContent,
+            branch:  headBranch,
+          });
+
+          console.log(`[webhook] PR #${prNumber}: Auto-committed deployguard.yml directly to active branch "${headBranch}"`);
+          autoCommitted = true;
+        } catch (autoErr) {
+          console.warn(`[webhook] PR #${prNumber}: Could not auto-commit workflow to "${headBranch}":`, autoErr.message);
+        }
+      }
+
+      if (autoCommitted) {
+        const { data: checkRun } = await octokit.rest.checks.create({
+          owner,
+          repo:       repoName,
+          name:       'DeployGuard',
+          head_sha:   headSha,
+          status:     'in_progress',
+          started_at: new Date().toISOString(),
+          output: {
+            title:   '✨ DeployGuard workflow added to branch',
+            summary: `DeployGuard automatically committed \`.github/workflows/deployguard.yml\` to \`${headBranch}\`. The Bundle Analysis CI workflow is starting now.`,
+          },
+        });
+
+        console.log(`[webhook] Check run #${checkRun.id} created (auto-injected workflow on branch ${headBranch})`);
+        return;
+      }
+
       const setupUrl = dbRepo?.setup_pr_url;
       const summaryLines = [
         '### ⚠️ DeployGuard workflow not configured',
@@ -520,17 +565,36 @@ async function createSetupPR({ octokit, owner, repoName, defaultBranch, buildToo
       return;
     } catch (e) {
       if (e.status !== 404) throw e; // unexpected error
-      // 404 = file doesn't exist — proceed with PR creation
+      // 404 = file doesn't exist — proceed with direct commit or PR creation
     }
 
-    // 2. Get the SHA of the default branch HEAD
+    const workflowContent = Buffer.from(generateWorkflow(buildTool)).toString('base64');
+
+    // 2. Try committing directly to the default branch (zero-friction setup)
+    try {
+      await octokit.rest.repos.createOrUpdateFileContents({
+        owner,
+        repo:    repoName,
+        path:    workflowPath,
+        message: commitMessage,
+        content: workflowContent,
+        branch:  defaultBranch,
+      });
+      console.log(`[onboard] ${owner}/${repoName} — directly committed workflow to ${defaultBranch}`);
+      await updateRepoSetup(repoId, { setup_status: 'merged' });
+      return;
+    } catch (directErr) {
+      console.log(`[onboard] ${owner}/${repoName} — direct push to ${defaultBranch} unavailable (${directErr.message}), falling back to setup PR`);
+    }
+
+    // 3. Get the SHA of the default branch HEAD
     const { data: refData } = await octokit.rest.git.getRef({
       owner, repo: repoName,
       ref: `heads/${defaultBranch}`,
     });
     const baseSha = refData.object.sha;
 
-    // 3. Create (or reset) the setup branch
+    // 4. Create (or reset) the setup branch
     try {
       await octokit.rest.git.createRef({
         owner, repo: repoName,
@@ -551,8 +615,7 @@ async function createSetupPR({ octokit, owner, repoName, defaultBranch, buildToo
       }
     }
 
-    // 4. Commit the workflow file
-    const workflowContent = Buffer.from(generateWorkflow(buildTool)).toString('base64');
+    // 5. Commit the workflow file on setup branch
     await octokit.rest.repos.createOrUpdateFileContents({
       owner, repo: repoName,
       path:    workflowPath,
@@ -561,7 +624,7 @@ async function createSetupPR({ octokit, owner, repoName, defaultBranch, buildToo
       branch:  setupBranch,
     });
 
-    // 5. Open the PR
+    // 6. Open the PR
     const { data: pr } = await octokit.rest.pulls.create({
       owner,
       repo:  repoName,
@@ -573,7 +636,26 @@ async function createSetupPR({ octokit, owner, repoName, defaultBranch, buildToo
 
     console.log(`[onboard] ${owner}/${repoName} — setup PR opened: ${pr.html_url}`);
 
-    // 6. Persist PR URL + status
+    // 7. Attempt to auto-merge the setup PR
+    try {
+      await octokit.rest.pulls.merge({
+        owner,
+        repo:        repoName,
+        pull_number: pr.number,
+        merge_method: 'squash',
+        commit_title: commitMessage,
+      });
+      console.log(`[onboard] ${owner}/${repoName} — setup PR #${pr.number} auto-merged successfully`);
+      await updateRepoSetup(repoId, {
+        setup_pr_url: pr.html_url,
+        setup_status: 'merged',
+      });
+      return;
+    } catch (mergeErr) {
+      console.log(`[onboard] ${owner}/${repoName} — setup PR #${pr.number} auto-merge failed (${mergeErr.message}), leaving PR open`);
+    }
+
+    // 8. Persist PR URL + status if auto-merge was blocked by branch protection
     await updateRepoSetup(repoId, {
       setup_pr_url: pr.html_url,
       setup_status: 'pr_open',
@@ -594,6 +676,7 @@ module.exports = {
   handlePR,
   handleWorkflowRun,
   runAnalysis,
+  createSetupPR,
   computeMetrics,
   buildResultsJson,
 };

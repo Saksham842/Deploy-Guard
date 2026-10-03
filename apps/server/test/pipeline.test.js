@@ -52,7 +52,7 @@ const db = require('../src/db');
 const { analyseBundle }   = require('../src/analysers/bundle');
 const { diffPackageJson } = require('../src/analysers/packageDiff');
 const { classifyCommits } = require('../src/nlp/client');
-const { handlePR, handleWorkflowRun } = require('../src/webhook');
+const { handlePR, handleWorkflowRun, createSetupPR } = require('../src/webhook');
 
 describe('DeployGuard Core Pipeline Smoke Test', () => {
   const MOCK_REPO = {
@@ -263,5 +263,119 @@ describe('DeployGuard Core Pipeline Smoke Test', () => {
       }),
     }));
   });
+
+  test('pull_request.opened automatically commits workflow file to active branch when missing and PR branch is internal', async () => {
+    mockOctokit.rest.repos = {
+      getContent: jest.fn().mockRejectedValue({ status: 404 }),
+      createOrUpdateFileContents: jest.fn().mockResolvedValue({}),
+    };
+
+    const internalPRPayload = {
+      ...MOCK_PR_PAYLOAD,
+      pull_request: {
+        ...MOCK_PR_PAYLOAD.pull_request,
+        head: {
+          sha: 'commit-sha-999',
+          ref: 'feature-cart',
+          repo: {
+            fork: false,
+            owner: { login: 'acme-corp' },
+            name: 'web-app',
+          },
+        },
+      },
+    };
+
+    await handlePR({ octokit: mockOctokit, payload: internalPRPayload });
+
+    expect(mockOctokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledWith(expect.objectContaining({
+      owner: 'acme-corp',
+      repo: 'web-app',
+      path: '.github/workflows/deployguard.yml',
+      branch: 'feature-cart',
+    }));
+
+    expect(mockOctokit.rest.checks.create).toHaveBeenCalledWith(expect.objectContaining({
+      owner: 'acme-corp',
+      repo: 'web-app',
+      status: 'in_progress',
+      output: expect.objectContaining({
+        title: expect.stringContaining('DeployGuard workflow added to branch'),
+      }),
+    }));
+  });
+
+  test('createSetupPR commits directly to default branch when not blocked', async () => {
+    const octokit = {
+      rest: {
+        repos: {
+          getContent: jest.fn().mockRejectedValue({ status: 404 }),
+          createOrUpdateFileContents: jest.fn().mockResolvedValue({}),
+        },
+      },
+    };
+
+    await createSetupPR({
+      octokit,
+      owner: 'acme-corp',
+      repoName: 'web-app',
+      defaultBranch: 'main',
+      buildTool: 'vite',
+      repoId: 'uuid-repo-1',
+    });
+
+    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledWith(expect.objectContaining({
+      owner: 'acme-corp',
+      repo: 'web-app',
+      path: '.github/workflows/deployguard.yml',
+      branch: 'main',
+    }));
+    expect(db.updateRepoSetup).toHaveBeenCalledWith('uuid-repo-1', { setup_status: 'merged' });
+  });
+
+  test('createSetupPR falls back to auto-merging setup PR if direct commit to default branch fails', async () => {
+    const octokit = {
+      rest: {
+        repos: {
+          getContent: jest.fn().mockRejectedValue({ status: 404 }),
+          createOrUpdateFileContents: jest.fn()
+            .mockRejectedValueOnce(new Error('Protected branch'))
+            .mockResolvedValueOnce({}),
+        },
+        git: {
+          getRef: jest.fn().mockResolvedValue({ data: { object: { sha: 'base-sha-123' } } }),
+          createRef: jest.fn().mockResolvedValue({}),
+        },
+        pulls: {
+          create: jest.fn().mockResolvedValue({
+            data: { number: 7, html_url: 'https://github.com/acme-corp/web-app/pull/7' },
+          }),
+          merge: jest.fn().mockResolvedValue({}),
+        },
+      },
+    };
+
+    await createSetupPR({
+      octokit,
+      owner: 'acme-corp',
+      repoName: 'web-app',
+      defaultBranch: 'main',
+      buildTool: 'vite',
+      repoId: 'uuid-repo-1',
+    });
+
+    expect(octokit.rest.pulls.create).toHaveBeenCalled();
+    expect(octokit.rest.pulls.merge).toHaveBeenCalledWith(expect.objectContaining({
+      owner: 'acme-corp',
+      repo: 'web-app',
+      pull_number: 7,
+      merge_method: 'squash',
+    }));
+    expect(db.updateRepoSetup).toHaveBeenCalledWith('uuid-repo-1', {
+      setup_pr_url: 'https://github.com/acme-corp/web-app/pull/7',
+      setup_status: 'merged',
+    });
+  });
 });
+
 
