@@ -18,7 +18,12 @@ const GROQ_MODEL      = 'llama-3.1-8b-instant';
 // ── Direct Groq helper (Node fallback) ────────────────────────────────────────
 
 async function callGroqDirect(systemPrompt, userPrompt) {
-  if (!GROQ_API_KEY) return null;
+  const apiKey = (process.env.GROQ_API_KEY || GROQ_API_KEY || '').trim();
+  if (!apiKey) {
+    console.warn('[groqExplain] Direct Groq skipped: GROQ_API_KEY is not set');
+    return null;
+  }
+  console.log('[groqExplain] Calling Groq Cloud API directly (llama-3.1-8b-instant)...');
   try {
     const { data } = await axios.post(
       GROQ_API_URL,
