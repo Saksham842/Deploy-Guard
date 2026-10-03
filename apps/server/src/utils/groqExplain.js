@@ -88,6 +88,7 @@ const SUMMARY_SYSTEM = (
   'The latest check PASSED — all metrics are within thresholds. ' +
   'Write a brief, positive summary (2-3 bullet points) confirming what\'s healthy. ' +
   'Mention the actual numbers from the data. ' +
+  'If the bundle decreased, congratulate the developer on the bundle size reduction and call out the removed packages. ' +
   'Keep it concise and encouraging. Use GitHub Markdown formatting.'
 );
 

@@ -38,7 +38,7 @@ function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseli
       delta,
       unit:      'KB',
       threshold: thresholdVal,
-      passed:    Math.abs(delta) <= thresholdVal || before === null,
+      passed:    delta <= thresholdVal || before === null,
     });
   } else {
     console.log('[analysis] No CI artifact — bundle metric skipped');
@@ -60,7 +60,7 @@ function computeMetrics({ bundleResult, bundleBaseline, queryBaseline, apiBaseli
       delta,
       unit:      'queries',
       threshold: thresholdVal,
-      passed:    !queryTrackingEnabled || Math.abs(delta) <= thresholdVal || before === null,
+      passed:    !queryTrackingEnabled || delta <= thresholdVal || before === null,
     });
   } else if (queryBaseline) {
     metrics.push({
