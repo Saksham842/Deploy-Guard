@@ -73,6 +73,20 @@ const SUMMARY_SYSTEM = (
   'Keep it concise and encouraging. Use GitHub Markdown formatting.'
 );
 
+const REVIEW_SYSTEM = (
+  'You are DeployGuard AI, a project health analyst. ' +
+  'Structure your response STRICTLY as three sections with these exact headers: ' +
+  '✅ Strengths | ⚠️ Risks | 🔧 Recommendations. ' +
+  'Exactly 3 bullet points per section, no more no less. ' +
+  'Every bullet point must reference at least one actual number from the ' +
+  'input data — no generic advice. ' +
+  'If pass rate is below 70%, flag it as critical in Risks. ' +
+  'If the same package appears multiple times, call it out by name in Risks. ' +
+  'If worst regression > 100 KB, treat it as a serious concern. ' +
+  'Speak to the project owner directly ("your project", "your team"). ' +
+  'Use GitHub Markdown formatting.'
+);
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -160,4 +174,40 @@ async function getAISummary({
   return callGroqDirect(SUMMARY_SYSTEM, userPrompt);
 }
 
-module.exports = { getAIExplanation, getAISummary };
+/**
+ * @param {Object} reviewData
+ * @returns {Promise<string|null>} Structured project health review or null on failure
+ */
+async function getAIReview(reviewData) {
+  // 1. Try NLP service
+  try {
+    const { data } = await axios.post(`${NLP_SERVICE_URL}/review`, reviewData, { timeout: 15_000 });
+    if (data?.report) return data.report;
+  } catch (err) {
+    console.warn('[groqExplain] NLP service /review failed:', err.message, '— falling back to direct Groq');
+  }
+
+  // 2. Direct Groq fallback
+  const passRate = reviewData.total_checks > 0
+    ? Math.round((reviewData.passed_checks / reviewData.total_checks) * 100)
+    : 0;
+  const trendLine = reviewData.trend_warning ? `- ⚠️ Trend warning: ${reviewData.trend_warning}\n` : '';
+
+  const userPrompt =
+    `Project health data for ${reviewData.repo_name}:\n` +
+    `- Total checks: ${reviewData.total_checks}\n` +
+    `- Passed checks: ${reviewData.passed_checks}\n` +
+    `- Failed checks: ${reviewData.failed_checks}\n` +
+    `- Pass rate: ${passRate}%\n` +
+    `- Average bundle size: ${reviewData.avg_bundle_kb} KB\n` +
+    `- Worst regression: ${reviewData.worst_regression_kb} KB\n` +
+    `- Most common cause: ${reviewData.most_common_cause}\n` +
+    `- Recently added packages: ${(reviewData.recent_packages_added || []).slice(0, 20).join(', ') || 'none'}\n` +
+    `${trendLine}\n` +
+    `Provide a structured health review for this project.`;
+
+  return callGroqDirect(REVIEW_SYSTEM, userPrompt);
+}
+
+module.exports = { getAIExplanation, getAISummary, getAIReview };
+

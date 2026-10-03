@@ -244,30 +244,24 @@ router.get('/repos/:owner/:name/ai-review', requireAuth, async (req, res) => {
       }
     }
 
-    const axios = require('axios');
-    const NLP_URL = process.env.NLP_SERVICE_URL || 'http://localhost:8000';
-    const { data } = await axios.post(
-      `${NLP_URL}/review`,
-      {
-        repo_name: repoName,
-        total_checks: totalChecks,
-        passed_checks: passedChecks,
-        failed_checks: failedChecks,
-        avg_bundle_kb: avgBundleKB,
-        worst_regression_kb: worstRegressionKB,
-        most_common_cause: mostCommonCause,
-        recent_packages_added: recentPackagesAdded,
-        // Phase 4: trend context surfaced to NLP for richer analysis
-        trend_warning: trendWarning.detected
-          ? `Recurring pattern: "${trendWarning.cause_type}" appeared in ${trendWarning.count} recent failing checks.`
-          : null,
-      },
-      { timeout: 20_000 }
-    );
+    const { getAIReview } = require('../utils/groqExplain');
+    const report = await getAIReview({
+      repo_name: repoName,
+      total_checks: totalChecks,
+      passed_checks: passedChecks,
+      failed_checks: failedChecks,
+      avg_bundle_kb: avgBundleKB,
+      worst_regression_kb: worstRegressionKB,
+      most_common_cause: mostCommonCause,
+      recent_packages_added: recentPackagesAdded,
+      trend_warning: trendWarning.detected
+        ? `Recurring pattern: "${trendWarning.cause_type}" appeared in ${trendWarning.count} recent failing checks.`
+        : null,
+    });
 
     // Return report + Phase 4 structured fields for dashboard rendering
     res.json({
-      report: data.report,
+      report: report || 'AI review temporarily unavailable.',
       trend_warning: trendWarning,
       chunk_diff: chunkDiff,
     });
