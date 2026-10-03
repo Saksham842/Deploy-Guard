@@ -149,7 +149,6 @@ afterAll(async () => {
     {
       title: 'HMAC Webhook Verification',
       subtitle: 'Step 1: Cryptographic Ingestion',
-      icon: '🛡️',
       desc: 'GitHub sends pull_request.opened, synchronize, or closed events. The Express ingestion endpoint verifies the HMAC-SHA256 signature using your GitHub Webhook Secret before reading or dispatching payloads.',
       code: `// apps/server/src/index.js
 app.post('/api/webhook', (req, res) => {
@@ -168,7 +167,6 @@ app.post('/api/webhook', (req, res) => {
     {
       title: 'Fetch Target Baseline',
       subtitle: 'Step 2: Database Historical Query',
-      icon: '📊',
       desc: 'DeployGuard queries PostgreSQL to retrieve the last verified performance baseline on the target branch (e.g. main). Baselines are strictly isolated per repo and branch.',
       code: `// Retrieve the latest verified benchmark for the base branch
 SELECT value, metric, updated_at
@@ -181,7 +179,6 @@ ORDER BY updated_at DESC;`
     {
       title: 'Artifact Extraction & Package Diff',
       subtitle: 'Step 3: Asset Analysis',
-      icon: '📦',
       desc: 'Octokit retrieves the bundle-stats artifact produced by GitHub Actions. DeployGuard calculates the exact asset delta and diffs package.json dependencies between base and head SHAs.',
       code: `const bundleResult = await analyseBundle(octokit, owner, repo, headSha);
 const pkgDiff = await diffPackageJson(octokit, owner, repo, baseSha, headSha);
@@ -196,7 +193,6 @@ const pkgDiff = await diffPackageJson(octokit, owner, repo, baseSha, headSha);
     {
       title: 'NLP 3-Tier Classification',
       subtitle: 'Step 4: Root Cause Intelligence',
-      icon: '🧠',
       desc: 'Commit messages, file diffs, and package modifications are dispatched to our Python FastAPI ML engine. A tiered pipeline classifies whether changes stem from bundle bloat, unindexed DB queries, or latency regressions.',
       code: `# apps/nlp/main.py
 @app.post("/classify")
@@ -219,7 +215,6 @@ async def classify_cause(payload: CommitContext):
     {
       title: 'Threshold Evaluation',
       subtitle: 'Step 5: Regression Check',
-      icon: '⚖️',
       desc: 'Deltas are compared against the repositories configurable safety margins. Every metric (bundle size, query count, latency) must be within tolerance for the check to pass.',
       code: `const bundleDelta = ((headKb - baseKb) / baseKb) * 100;
 const queryDelta = headQueries - baseQueries;
@@ -234,7 +229,6 @@ const conclusion = passed ? 'success' : 'failure';`
     {
       title: 'Check Run & Baseline Promotion',
       subtitle: 'Step 6: GitHub Feedback & Merge Gate',
-      icon: '🚀',
       desc: 'DeployGuard updates the GitHub Check Run status and posts an in-place markdown comment on the PR with AI analysis. On merge to main, the baseline is promoted to guard future PRs.',
       code: `// Post or update native GitHub Check Run
 await octokit.rest.checks.update({
@@ -313,11 +307,11 @@ if (isMergeToMain && passed) {
         {/* Section Navigation Tabs */}
         <div className="flex flex-wrap gap-2 mt-8 p-1.5 bg-[#0E1118]/80 backdrop-blur-xl border border-white/[0.08] rounded-xl w-fit">
           {[
-            { id: 'setup', label: '🚀 CI Setup & Workflows' },
-            { id: 'architecture', label: '⚡ 6-Step Event Engine' },
-            { id: 'nlp', label: '🧠 3-Tier NLP Pipeline' },
-            { id: 'thresholds', label: '⚖️ Performance Thresholds' },
-            { id: 'faq', label: '💡 Security & FAQs' },
+            { id: 'setup', label: 'CI Setup & Workflows' },
+            { id: 'architecture', label: '6-Step Event Engine' },
+            { id: 'nlp', label: '3-Tier NLP Pipeline' },
+            { id: 'thresholds', label: 'Performance Thresholds' },
+            { id: 'faq', label: 'Security & FAQs' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -464,15 +458,9 @@ if (isMergeToMain && passed) {
                   className="btn btn-ghost text-xs font-mono flex items-center gap-1.5 cursor-pointer"
                 >
                   {copiedKey === bundlerTab ? (
-                    <>
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-emerald-400">Copied to Clipboard!</span>
-                    </>
+                    <span className="text-emerald-400">Copied to clipboard</span>
                   ) : (
-                    <>
-                      <span>📋</span>
-                      <span>Copy Snippet</span>
-                    </>
+                    <span>Copy snippet</span>
                   )}
                 </button>
               </div>
@@ -522,28 +510,25 @@ if (isMergeToMain && passed) {
                 <div
                   key={idx}
                   onClick={() => setActiveStep(idx)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center gap-3.5 ${
                     activeStep === idx
                       ? 'bg-violet-500/15 border-violet-500/50 shadow-[0_0_20px_rgba(124,58,237,0.2)]'
                       : 'bg-[#0E1118]/80 border-white/[0.08] hover:border-white/[0.2] hover:bg-white/[0.02]'
                   }`}
                 >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${
-                    activeStep === idx ? 'bg-violet-500/20 text-white' : 'bg-white/[0.05] text-[#9CA3AF]'
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono text-xs font-bold shrink-0 ${
+                    activeStep === idx ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'bg-white/[0.04] text-[#6B7280] border border-white/[0.06]'
                   }`}>
-                    {s.icon}
+                    0{idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-mono text-violet-400 uppercase tracking-wider">
+                    <div className="text-[10px] font-mono text-violet-400/90 uppercase tracking-wider">
                       {s.subtitle}
                     </div>
-                    <div className="text-xs font-bold text-white truncate">
+                    <div className="text-xs font-semibold text-white truncate">
                       {s.title}
                     </div>
                   </div>
-                  <span className="text-xs text-[#9CA3AF] font-mono">
-                    0{idx + 1}
-                  </span>
                 </div>
               ))}
             </div>
@@ -552,13 +537,15 @@ if (isMergeToMain && passed) {
             <div className="lg:col-span-7 panel flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{steps[activeStep].icon}</span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono text-xs font-bold text-violet-400 px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20">
+                      0{activeStep + 1}
+                    </span>
                     <h3 className="text-sm font-bold text-white">
                       {steps[activeStep].title}
                     </h3>
                   </div>
-                  <span className="text-xs font-mono text-violet-400 px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20">
+                  <span className="text-xs font-mono text-[#9CA3AF] px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.08]">
                     Step {activeStep + 1} of {steps.length}
                   </span>
                 </div>
@@ -574,7 +561,7 @@ if (isMergeToMain && passed) {
                       onClick={() => copyToClipboard(steps[activeStep].code, `step-${activeStep}`)}
                       className="text-[10px] font-mono text-violet-400 hover:text-violet-300 cursor-pointer"
                     >
-                      {copiedKey === `step-${activeStep}` ? '✓ Copied' : 'Copy'}
+                      {copiedKey === `step-${activeStep}` ? 'Copied' : 'Copy'}
                     </button>
                   </div>
                   <div className="bg-[#08090C] border border-white/[0.08] rounded-b-lg p-3 overflow-x-auto max-h-64">
@@ -709,7 +696,6 @@ if (isMergeToMain && passed) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
               {
-                icon: '📦',
                 name: 'Bundle Growth Limit',
                 key: 'bundle_kb',
                 defaultVal: '±10%',
@@ -717,7 +703,6 @@ if (isMergeToMain && passed) {
                 desc: 'Maximum percentage increase in JavaScript & CSS bundle assets allowed relative to the target branch baseline.'
               },
               {
-                icon: '🔍',
                 name: 'Database Query Spike',
                 key: 'query_count',
                 defaultVal: '±20 queries',
@@ -725,7 +710,6 @@ if (isMergeToMain && passed) {
                 desc: 'Maximum increase in SQL queries executed during test runs. Catches N+1 query patterns before deployment.'
               },
               {
-                icon: '⚡',
                 name: 'API p95 Latency',
                 key: 'api_p95_ms',
                 defaultVal: '±20%',
@@ -733,14 +717,22 @@ if (isMergeToMain && passed) {
                 desc: 'Prevents blocking event loop work and sluggish database indexes by catching latency degradation early.'
               }
             ].map((metric, idx) => (
-              <div key={idx} className="card p-6">
-                <div className="text-2xl mb-3">{metric.icon}</div>
-                <h3 className="text-sm font-bold text-white mb-1">{metric.name}</h3>
-                <div className="text-xs font-mono text-violet-400 mb-2">Key: {metric.key}</div>
-                <div className="inline-block px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[11px] font-mono mb-3">
-                  Default: {metric.defaultVal} ({metric.unit})
+              <div key={idx} className="card p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-mono text-xs text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20">
+                      {metric.key}
+                    </span>
+                    <span className="text-[10px] font-mono text-[#6B7280] uppercase tracking-wider">
+                      {metric.unit}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white mb-2">{metric.name}</h3>
+                  <div className="inline-block px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.08] text-[#9CA3AF] text-[11px] font-mono mb-3">
+                    Default: <span className="text-white font-medium">{metric.defaultVal}</span>
+                  </div>
+                  <p className="text-xs text-[#9CA3AF] leading-relaxed">{metric.desc}</p>
                 </div>
-                <p className="text-xs text-[#9CA3AF] leading-relaxed">{metric.desc}</p>
               </div>
             ))}
           </div>
