@@ -23,32 +23,50 @@ async function callGroqDirect(systemPrompt, userPrompt) {
     console.warn('[groqExplain] Direct Groq skipped: GROQ_API_KEY is not set');
     return null;
   }
-  console.log('[groqExplain] Calling Groq Cloud API directly (llama-3.1-8b-instant)...');
-  try {
-    const { data } = await axios.post(
-      GROQ_API_URL,
-      {
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens:  600,
-      },
-      {
-        timeout: 20_000,
-        headers: {
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
+
+  const candidateModels = [
+    process.env.GROQ_MODEL,
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+  ].filter(Boolean);
+
+  for (const model of candidateModels) {
+    try {
+      console.log(`[groqExplain] Calling Groq Cloud API (${model})...`);
+      const { data } = await axios.post(
+        GROQ_API_URL,
+        {
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens:  600,
         },
-      },
-    );
-    return data.choices?.[0]?.message?.content?.trim() || null;
-  } catch (err) {
-    console.error('[groqExplain] Direct Groq call failed:', err.message);
-    return null;
+        {
+          timeout: 20_000,
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      const text = data.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+    } catch (err) {
+      const errDetail = err.response?.data?.error?.message || err.message;
+      console.warn(`[groqExplain] Model "${model}" failed: ${errDetail}`);
+      if (err.response?.status === 401) {
+        // Invalid API key — don't retry other models
+        return null;
+      }
+    }
   }
+
+  return null;
 }
 
 // ── Prompts (mirrored from ai_features.py) ────────────────────────────────────
